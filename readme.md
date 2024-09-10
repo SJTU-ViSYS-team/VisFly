@@ -65,7 +65,21 @@ Then you can find the result in the `examples/cluttered_flight/saved/test/` fold
 The figures could be customized via `render_settings (line 121)` in the `examples/cluttered_flight/test.py`. 
 The perspective and position of rendering camera in video could be set in `examples/cluttered_flight/rl.py`. 
 
-# Simple Introduction
+# Citation
+If this simulator or any part of this simulator could be helpful, I appreciate it very much when  you maybe cite this one:
+```
+@misc{li2024visflyefficientversatilesimulator,
+      title={VisFly: An Efficient and Versatile Simulator for Training Vision-based Flight}, 
+      author={Fanxing Li and Fangyu Sun and Tianbao Zhang and Danping Zou},
+      year={2024},
+      eprint={2407.14783},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2407.14783}, 
+}
+```
+
+# Simple Manual
 ## Complete Environment Definition
 This is a complete definition of the environment of NavigationEnv.
 ```python
