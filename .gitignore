@@ -1,0 +1,21 @@
+.vscode/
+.idea/
+debug/*
+！debug/*.py
+datasets/*
+!datasets/.gitkeep
+# 忽略所有 Python 缓存文件
+*.pyc
+__pycache__/
+*.pyo
+
+**/*.mp4
+**/*.avi
+**/*.jpg
+**/*.png
+
+**/saved/
+
+**/*.pyc
+**/__pycache__/
+**/*.pyo

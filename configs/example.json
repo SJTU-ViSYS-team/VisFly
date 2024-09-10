@@ -1,0 +1,63 @@
+{
+  "name": "example",
+  "inertia": [
+    4.5,
+    4.5,
+    7
+  ],
+  "mass": 0.73,
+  "drag_coeffs": [
+    [
+      0.5,
+      0.5,
+      0.5
+    ]
+  ],
+  "max_rate": 6.0,
+  "max_spd": 10.0,
+  "max_pos": 10.0,
+  "BODYRAYE_PID": {
+    "p": [
+      [
+        16.6,
+        0,
+        0
+      ],
+      [
+        0,
+        16.6,
+        0
+      ],
+      [
+        0,
+        0,
+        5.0
+      ]
+    ],
+    "i": 0.01,
+    "d": 0.01
+  },
+  "VELOCITY_PID": {
+    "p": 0.8,
+    "i": 0.01,
+    "d": 0.7
+  },
+  "POSITION_PID": {
+    "p": 1,
+    "i": 0.01,
+    "d": 0.25
+  },
+  "arm_length": 0.17,
+  "kappa": 0.016,
+  "motor_omega_max": 3000,
+  "motor_omega_min": 150,
+  "motor_tau": 0.0001,
+  "thrust_map": [
+    1.3298253500372892e-06,
+    0.0038360810526746033,
+    -1.7689986848125325
+  ],
+  "_comment_": [
+    "kappa: drag coefficient"
+  ]
+}
