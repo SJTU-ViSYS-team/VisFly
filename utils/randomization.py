@@ -1,7 +1,7 @@
 import torch as th
-from utils.type import Uniform, Normal
+from .type import Uniform, Normal
 from typing import Union, Optional
-from utils.maths import Quaternion
+from .maths import Quaternion
 from abc import abstractmethod
 
 

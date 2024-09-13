@@ -15,7 +15,7 @@ from stable_baselines3.common.torch_layers import (
     get_actor_critic_arch,
 )
 from stable_baselines3.common.type_aliases import PyTorchObs, Schedule
-from utils.policies.extractors import create_mlp, create_cnn
+from .extractors import create_mlp, create_cnn
 from torch.distributions import Normal
 
 

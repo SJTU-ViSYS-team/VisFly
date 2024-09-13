@@ -1,12 +1,12 @@
 import numpy as np
-from envs.NavigationEnv import NavigationEnv
+from .NavigationEnv import NavigationEnv
 from typing import Optional, Dict
 import torch as th
 from habitat_sim import SensorType
 import os, sys
 from gymnasium import spaces
-from utils.tools.train_encoder import model as encoder
-from utils.type import TensorDict
+from ..utils.tools.train_encoder import model as encoder
+from ..utils.type import TensorDict
 
 
 class NavigationEnv2(NavigationEnv):
@@ -49,7 +49,7 @@ class NavigationEnv2(NavigationEnv):
         )
         self.max_sense_radius = 10
         self.encoder = encoder
-        self.encoder.load_state_dict(th.load('utils/tools/depth_autoencoder.pth'))
+        self.encoder.load_state_dict(th.load(os.path.dirname(__file__)+'/../utils/tools/depth_autoencoder.pth'))
         self.encoder.eval()
         self.encoder.requires_grad_(False)
         self.observation_space["depth_state"] = spaces.Box(

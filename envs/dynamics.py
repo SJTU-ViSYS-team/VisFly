@@ -6,10 +6,10 @@ import os, io, sys
 import json
 
 sys.path.append(os.getcwd())
-from utils.maths import Quaternion, Integrator, cross
-from utils.type import *
+from ..utils.maths import Quaternion, Integrator, cross
+from ..utils.type import *
 import torch.nn as nn
-from utils.type import ACTION_TYPE
+from ..utils.type import ACTION_TYPE
 
 g = th.tensor([[0, 0, -9.81]]).T
 z = th.tensor([[0, 0, 1]]).T
@@ -71,7 +71,7 @@ class Dynamics:
         self._set_device(device)
 
     def _init(self):
-        self.load("configs/example.json")
+        self.load(os.path.dirname(__file__)+"/../configs/example.json")
         t_BM_ = (
                 self._arm_length
                 * th.tensor(0.5).sqrt()

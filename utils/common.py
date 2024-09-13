@@ -5,7 +5,7 @@ import numpy as np
 from typing import Optional, Tuple, List
 from torch import Tensor
 import torch as th
-from utils.maths import Quaternion
+from .maths import Quaternion
 
 
 def obs_list2array(obs_dict: List, row: int, column: int):
@@ -144,4 +144,4 @@ def set_seed(seed):
 
     th.backends.cudnn.deterministic = True
     th.backends.cudnn.benchmark = False
-    th.use_deterministic_algorithms(True)
+    # th.use_deterministic_algorithms(True)

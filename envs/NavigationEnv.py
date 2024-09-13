@@ -1,5 +1,5 @@
 import numpy as np
-from envs.droneGymEnv import DroneGymEnvsBase
+from .droneGymEnv import DroneGymEnvsBase
 from typing import Union, Tuple, List, Optional, Dict
 import torch as th
 from habitat_sim import SensorType

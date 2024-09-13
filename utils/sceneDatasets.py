@@ -7,20 +7,20 @@ sys.path.append(os.getcwd())
 
 from itertools import cycle
 
-from utils.dataloader import SimpleDataLoader
+from .dataloader import SimpleDataLoader
 from torch.utils.data import DataLoader
 from torch import Tensor
 from typing import Union, List, Tuple, Type
-from utils.pathFinder import PRMPlanner
+from .pathFinder import PRMPlanner
 import numpy as np
 
 from scipy.spatial.transform import Rotation as R
-from utils.datasets import ChildrenPathDataset
+from .datasets import ChildrenPathDataset
 
 from typing import List, Union, Optional
 import quaternion
 import magnum as mn
-from utils.common import *
+from .common import *
 from abc import ABC
 
 DEBUG = False
@@ -207,23 +207,24 @@ class SceneManager(ABC):
     def _get_datasets_info(self, path):
         parts = path.split("/")
         index = parts.index("datasets")+1
+        root_addr = os.path.dirname(__file__)+"/../"
         self.datasets = parts[index]
         if "hm3d" in parts[index].lower():
             self.datasets_name = "hm3d"
-            self._datasets_path = "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
-            self._object_path = "datasets/spy_datasets/configs/agents/DJI_Mavic_Mini_2.object_config.json"
+            self._datasets_path = root_addr+"datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+            self._object_path = root_addr+"datasets/spy_datasets/configs/agents/DJI_Mavic_Mini_2.object_config.json"
         elif "spy" in parts[index].lower():
             self.datasets_name = "spy_datasets"
-            self._datasets_path = "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
-            self._object_path = "datasets/spy_datasets/configs/agents/DJI_Mavic_Mini_2.object_config.json"
+            self._datasets_path = root_addr+"datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+            self._object_path = root_addr+"datasets/spy_datasets/configs/agents/DJI_Mavic_Mini_2.object_config.json"
         elif "hssd" in parts[index].lower():
             self.datasets_name = "hssd-hab"
-            self._datasets_path = "datasets/hssd-hab/hssd-hab.scene_dataset_config.json"
-            self._object_path = "datasets/hssd-hab/objects/0/DJI_Mavic_Mini_2.object_config.json"
+            self._datasets_path = root_addr+"datasets/hssd-hab/hssd-hab.scene_dataset_config.json"
+            self._object_path = root_addr+"datasets/hssd-hab/objects/0/DJI_Mavic_Mini_2.object_config.json"
         elif "mp3d" in parts[index].lower():
             self.datasets_name = "mp3d"
-            self._datasets_path = "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
-            self._object_path = "datasets/spy_datasets/configs/agents/DJI_Mavic_Mini_2.object_config.json"
+            self._datasets_path = root_addr+"datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+            self._object_path = root_addr+"datasets/spy_datasets/configs/agents/DJI_Mavic_Mini_2.object_config.json"
         else:
             raise ValueError("datasets name is not supported")
 

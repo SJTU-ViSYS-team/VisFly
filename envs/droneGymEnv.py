@@ -1,16 +1,16 @@
 from copy import deepcopy
 
 from stable_baselines3.common.vec_env import VecEnv
-from envs.droneEnv import DroneEnvsBase
+from .droneEnv import DroneEnvsBase
 from typing import Union, Tuple, List, Dict, Optional
 from gymnasium import spaces
 import numpy as np
 from abc import ABC, abstractmethod
 import torch as th
-from utils.type import Uniform
-from utils.randomization import UniformStateRandomizer
+from ..utils.type import Uniform
+from ..utils.randomization import UniformStateRandomizer
 from habitat_sim import SensorType
-from utils.type import ACTION_TYPE
+from ..utils.type import ACTION_TYPE
 
 class DroneGymEnvsBase(VecEnv):
     def __init__(

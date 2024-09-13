@@ -1,14 +1,14 @@
 import numpy as np
-from envs.dynamics import Dynamics
-from utils.sceneDatasets import SceneManager
+from .dynamics import Dynamics
+from ..utils.sceneDatasets import SceneManager
 from typing import List, Union, Tuple, Dict, Optional
-from utils.randomization import UniformStateRandomizer, NormalStateRandomizer
-from utils.type import Uniform, Normal
+from ..utils.randomization import UniformStateRandomizer, NormalStateRandomizer
+from ..utils.type import Uniform, Normal
 from torch import Tensor
 from typing import Optional, Type
 import torch as th
 import json
-from utils.common import habitat_to_std
+from ..utils.common import habitat_to_std
 
 IS_BBOX_COLLISION = True
 

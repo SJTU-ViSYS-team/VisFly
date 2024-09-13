@@ -7,9 +7,9 @@ import habitat_sim
 import json
 import numpy as np
 import random
-from utils.common import *
+from .common import *
 import argparse
-from utils.common import std_to_habitat
+from .common import std_to_habitat
 import torch as th
 # --------------------examples---------------------
 # scene json
