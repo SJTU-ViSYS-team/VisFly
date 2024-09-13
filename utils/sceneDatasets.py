@@ -7,6 +7,7 @@ sys.path.append(os.getcwd())
 
 from itertools import cycle
 
+from utils.dataloader import SimpleDataLoader
 from torch.utils.data import DataLoader
 from torch import Tensor
 from typing import Union, List, Tuple, Type
@@ -155,9 +156,12 @@ class SceneManager(ABC):
         self.drone_radius = uav_radius
         self.sensitive_radius = sensitive_radius
 
-        self._dataLoader = DataLoader(
+        # self._dataLoader = DataLoader(
+        #     ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=True
+        # , num_workers=0)
+        self._dataLoader = SimpleDataLoader(
             ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=True
-        , num_workers=0)
+        )
         self._scene_loader = cycle(self._dataLoader)
         self.scenes: List[habitat_sim.scene] = [None for _ in range(num_scene)]
         self.agents: List[List[habitat_sim.agent]] = [[] for _ in range(num_scene)]
@@ -198,7 +202,7 @@ class SceneManager(ABC):
         self._collision_point = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
         self._is_out_bounds = [[False for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
 
-        self.load_scenes()
+        # self.load_scenes()
 
     def _get_datasets_info(self, path):
         parts = path.split("/")

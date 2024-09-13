@@ -144,4 +144,4 @@ def set_seed(seed):
 
     th.backends.cudnn.deterministic = True
     th.backends.cudnn.benchmark = False
-    # th.use_deterministic_algorithms(True)
+    th.use_deterministic_algorithms(True)

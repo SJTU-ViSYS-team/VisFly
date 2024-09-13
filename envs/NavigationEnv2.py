@@ -61,7 +61,7 @@ class NavigationEnv2(NavigationEnv):
         # reset observation space
         self.observation_space = spaces.Dict({
             "state": self.observation_space["state"],
-            "depth": self.observation_space["depth_state"],
+            # "depth": self.observation_space["depth_state"],
             # "target": self.observation_space["target"],
         })
 
@@ -81,7 +81,7 @@ class NavigationEnv2(NavigationEnv):
         if not self.requires_grad:
             return TensorDict({
                 "state": self.state.cpu().clone().numpy(),
-                "depth": encoder.encode(th.from_numpy(self.sensor_obs["depth"]).to(self.device)).cpu().numpy(),
+                # "depth": encoder.encode(th.from_numpy(self.sensor_obs["depth"]).to(self.device)).cpu().numpy(),
                 # "target": self.target.cpu().clone().numpy(),
                 # "latent": self.latent.cpu().clone(),
             })
@@ -95,7 +95,7 @@ class NavigationEnv2(NavigationEnv):
             # })
             return TensorDict({
                 "state": state,
-                # "depth": encoder.encode(th.from_numpy(self.sensor_obs["depth"]).to(self.device)).detach(),
+                # "depth": encoder.encode(th.from_numpy(self.sensor_obs["depth"]).to(self.device)),
                 # "target": self.target.to(self.device),
                 # "depth_unencode": th.as_tensor(self.sensor_obs["depth"]),
             })

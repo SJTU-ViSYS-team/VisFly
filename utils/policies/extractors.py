@@ -428,7 +428,8 @@ class StateImageExtractor(ImageExtractor):
                  net_arch: Dict = {},
                  activation_fn: Type[nn.Module] = nn.ReLU,
                  ):
-        assert "state" in observation_space.keys()
+        obs_keys = list(observation_space.keys())
+        assert "state" in obs_keys
         super(StateImageExtractor, self).__init__(observation_space=observation_space,
                                                   net_arch=net_arch,
                                                   activation_fn=activation_fn)

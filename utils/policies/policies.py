@@ -3,7 +3,7 @@ from distutils.dist import Distribution
 import torch as th
 import torch.nn as nn
 import numpy as np
-from stable_baselines3.common.policies import ActorCriticPolicy, MultiInputActorCriticPolicy
+from stable_baselines3.common.policies import ActorCriticPolicy, MultiInputActorCriticPolicy, BaseModel
 from typing import Tuple, Callable, Any
 from gym import spaces
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, CombinedExtractor
@@ -248,9 +248,9 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
         :return: the estimated values.
         """
         if hasattr(self.features_extractor, "recurrent_extractor"):
-            features = super().extract_features(obs, self.vf_features_extractor)[0]
+            features = super(ActorCriticPolicy, self).extract_features(obs, self.vf_features_extractor)[0]
         else:
-            features = super().extract_features(obs, self.vf_features_extractor)
+            features = super(ActorCriticPolicy,self).extract_features(obs, self.vf_features_extractor)
         latent_vf = self.mlp_extractor.forward_critic(features)
         return self.value_net(latent_vf)
 

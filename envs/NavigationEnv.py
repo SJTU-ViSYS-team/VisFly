@@ -100,9 +100,9 @@ class NavigationEnv(DroneGymEnvsBase):
                 }
 
     def get_success(self) -> th.Tensor:
-        return (self.position - self.target).norm(dim=1) <= self.success_radius
+        # return (self.position - self.target).norm(dim=1) <= self.success_radius
         # return self.position[:, 0] >= 10.
-        # return th.full((self.num_agent,), False)
+        return th.full((self.num_agent,), False)
 
     # For VisFly Manuscript
     # def get_reward(self) -> th.Tensor:
@@ -130,7 +130,7 @@ class NavigationEnv(DroneGymEnvsBase):
                  (self.orientation - th.tensor([1, 0, 0, 0])).norm(dim=1) * -0.00001 +
                  (self.velocity - 0).norm(dim=1) * -0.002 +
                  (self.angular_velocity - 0).norm(dim=1) * -0.002
-                 + self._success * (self.max_episode_steps - self._step_count) * base_r # / ((self.velocity-0).norm()+1)
+                 + self._success * 10 * base_r # / ((self.velocity-0).norm()+1)
                  # + (1 / self.collision_dis + 0.1) * -0.001
                  # + (1 - self.collision_dis).relu() * ((self.collision_vector * (self.velocity - 0)).sum(dim=1) / (1e-6 + self.collision_dis)).relu() * -0.005
         )

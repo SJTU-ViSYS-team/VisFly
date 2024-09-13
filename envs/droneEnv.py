@@ -80,7 +80,7 @@ class DroneEnvsBase:
         self._create_bbox()
         self._sensor_list = [sensor["uuid"] for sensor in sensor_kwargs] if sensor_kwargs is not None else []
         self._visual_sensor_list = [s for s in self._sensor_list if "IMU" not in s]
-        self.reset()
+        # self.reset()
 
     def _create_noise_model(self):
         self.noise_settings["IMU"] = self.noise_settings.get("IMU", {
@@ -112,20 +112,20 @@ class DroneEnvsBase:
     def _create_bbox(self):
         if not self.visual:
             bboxes = [th.tensor([[-2., -10., 0.], [18., 10., 7.]]).to(self.device)]
-        else:
-            bboxes = []
-            if self.sceneManager.scenes[0] is None:
-                self.sceneManager.load_scenes()
-            for i in range(len(self.sceneManager.scenes)):
-                bound = None
-               # use json bound settings as priority
-                # use habitatsim bound then
-                if bound is None:
-                    bound = self.sceneManager.scenes[i].get_active_scene_graph().get_root_node().cumulative_bb
-                    bound = habitat_to_std(np.stack([np.array(bound.front_bottom_right), np.array(bound.back_top_left)]), None)[0].to(self.device)
-                bboxes.append(bound)
-        self._bboxes = bboxes
-        self._flatten_bboxes = [bbox.flatten() for bbox in bboxes]
+        # else:
+        #     bboxes = []
+        #     if self.sceneManager.scenes[0] is None:
+        #         self.sceneManager.load_scenes()
+        #     for i in range(len(self.sceneManager.scenes)):
+        #         bound = None
+        #        # use json bound settings as priority
+        #         # use habitatsim bound then
+        #         if bound is None:
+        #             bound = self.sceneManager.scenes[i].get_active_scene_graph().get_root_node().cumulative_bb
+        #             bound = habitat_to_std(np.stack([np.array(bound.front_bottom_right), np.array(bound.back_top_left)]), None)[0].to(self.device)
+        #         bboxes.append(bound)
+            self._bboxes = bboxes
+            self._flatten_bboxes = [bbox.flatten() for bbox in bboxes]
 
     def _create_randomizer(self, random_kwargs: Dict):
         state_random_kwargs = random_kwargs.get("state_generator", {})
@@ -204,32 +204,6 @@ class DroneEnvsBase:
         return stateGenerators
 
     def _generate_state(self, indices: Optional[List[int]] = None) -> Tuple[Tensor, Optional[np.ndarray]]:
-        # if not self.is_multi_drone:
-        #     if indices is None:
-        #         if not self.visual:
-        #             positions, orientations, velocities, angular_velocities = self.stateGenerators[0].generate(num=self.dynamics.num)
-        #         else:
-        #             positions, orientations, velocities, angular_velocities = \
-        #                 th.empty((self.dynamics.num, 3), device=self.device), th.empty((self.dynamics.num, 4), device=self.device), \
-        #                     th.empty((self.dynamics.num, 3), device=self.device), th.empty((self.dynamics.num, 3), device=self.device)
-        #             for scene_id in range(self.sceneManager.num_scene):
-        #                 start, end = scene_id * self.sceneManager.num_agent_per_scene, (scene_id + 1) * self.sceneManager.num_agent_per_scene
-        #                 positions[start:end], orientations[start:end], velocities[start:end], angular_velocities[start:end] = \
-        #                     self.stateGenerators[scene_id].generate(num=self.sceneManager.num_agent_per_scene)
-        #
-        #     else:
-        #         indices = th.as_tensor([indices], device=self.device) if not hasattr(indices, "__iter__") else indices
-        #         if not self.visual:
-        #             positions, orientations, velocities, angular_velocities = self.stateGenerators[0].generate(num=len(indices))
-        #         else:
-        #             scene_ids = indices // self.sceneManager.num_agent_per_scene
-        #             positions, orientations, velocities, angular_velocities = \
-        #                 th.empty((len(indices), 3), device=self.device), th.empty((len(indices), 4), device=self.device), \
-        #                     th.empty((len(indices), 3), device=self.device), th.empty((len(indices), 3), device=self.device)
-        #             for data_id, scene_id in enumerate(scene_ids):
-        #                 positions[data_id], orientations[data_id], velocities[data_id], angular_velocities[data_id] = \
-        #                     self.stateGenerators[scene_id].generate(num=1)
-        # else:
         indices = np.arange(self.dynamics.num) if indices is None else indices
         indices = th.as_tensor([indices], device=self.device) if not hasattr(indices, "__iter__") else indices
         positions, orientations, velocities, angular_velocities = \
@@ -295,21 +269,14 @@ class DroneEnvsBase:
         if self.visual:
             if indices is None:
                 self._collision_point = self.sceneManager.get_collision_point().to(self.device)
-                # self._collision_vector = self._collision_point - self.position
-                # self._collision_dis = (self._collision_vector - 0).norm(dim=1)
-                # self._is_collision = (self._collision_dis < self.uav_radius) | self.sceneManager.is_out_bounds
             # indices are not None
             else:
                 self._collision_point[indices] = self.sceneManager.get_collision_point(indices=indices).to(self.device)
-                # self._collision_vector = self._collision_point - self.position
-                # self._collision_dis = (self._collision_vector - 0).norm(dim=1)
-                # self._is_collision = (self._collision_dis < self.uav_radius) | self.sceneManager.is_out_bounds
             self._is_out_bounds = self.sceneManager.is_out_bounds
 
         # not visual
         else:
             if indices is None:
-                # self._is_collision = ((self._bboxes[0][0] >= self.dynamics.position) | (self.dynamics.position >= self._bboxes[0][1])).any(dim=1)
                 value, index = th.hstack([
                     self.dynamics.position.clone().detach() - self._bboxes[0][0],
                     self._bboxes[0][1] - self.dynamics.position.clone().detach()]
@@ -329,7 +296,6 @@ class DroneEnvsBase:
 
         self._collision_vector = (self._collision_point - self.position)
         self._collision_dis = (self._collision_vector - 0).norm(dim=1)
-        # self._collision_dis = value
         self._is_collision = (self._collision_dis < self.uav_radius) | self._is_out_bounds
 
     def step(self, action):
