@@ -1,10 +1,12 @@
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union, Tuple
 
+import numpy as np
 import torch as th
 from gymnasium import spaces
 from torch import nn
 
-from stable_baselines3.common.policies import BasePolicy, ContinuousCritic
+# from stable_baselines3.common.policies import BasePolicy, ContinuousCritic
+from stable_baselines3.common.policies import ContinuousCritic as NormalContinuousCritic, BasePolicy
 from stable_baselines3.common.preprocessing import get_action_dim
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
@@ -17,9 +19,65 @@ from stable_baselines3.common.torch_layers import (
 from stable_baselines3.common.type_aliases import PyTorchObs, Schedule
 from .extractors import create_mlp, create_cnn
 from torch.distributions import Normal
+from stable_baselines3.common.distributions import SquashedDiagGaussianDistribution, StateDependentNoiseDistribution, DiagGaussianDistribution
+
+# CAP the standard deviation of the actor
+LOG_STD_MAX = 2
+LOG_STD_MIN = -20
+
+from stable_baselines3.sac.policies import Actor as SAC_Actor
+from stable_baselines3.sac.policies import SACPolicy
 
 
-class Actor(BasePolicy):
+class ContinuousCritic(NormalContinuousCritic):
+    def __init__(
+            self,
+            observation_space: spaces.Space,
+            action_space: spaces.Box,
+            net_arch: List[int],
+            features_extractor: BaseFeaturesExtractor,
+            features_dim: int,
+            activation_fn: Type[nn.Module] = nn.ReLU,
+            normalize_images: bool = True,
+            n_critics: int = 2,
+            share_features_extractor: bool = True,
+
+    ):
+        super().__init__(
+            observation_space,
+            action_space,
+            net_arch,
+            features_extractor,
+            features_dim,
+            activation_fn,
+            normalize_images,
+            n_critics,
+            share_features_extractor
+        )
+
+    def forward(self, obs: th.Tensor, actions: th.Tensor) -> Tuple[th.Tensor, ...]:
+        # Learn the features extractor using the policy loss only
+        # when the features_extractor is shared with the actor
+        with th.set_grad_enabled(not self.share_features_extractor):
+            if self.features_extractor.is_recurrent:
+                features, h = self.extract_features(obs, self.features_extractor)
+            else:
+                features, h = self.extract_features(obs, self.features_extractor), None
+        qvalue_input = th.cat([features, actions], dim=1)
+        return tuple(q_net(qvalue_input) for q_net in self.q_networks)
+
+    def q1_forward(self, obs: th.Tensor, actions: th.Tensor) -> th.Tensor:
+        """
+        Only predict the Q-value using the first network.
+        This allows to reduce computation when all the estimates are not needed
+        (e.g. when updating the policy in TD3).
+        """
+        with th.no_grad():
+            features, h = self.extract_features(obs, self.features_extractor)
+        return self.q_networks[0](th.cat([features, actions], dim=1))
+
+
+class Actor(SAC_Actor):
     """
     Actor network (policy) for TD3.
 
@@ -42,89 +100,86 @@ class Actor(BasePolicy):
             features_extractor: nn.Module,
             features_dim: int,
             activation_fn: Type[nn.Module] = nn.ReLU,
-            normalize_images: bool = True,
-            deterministic: bool = True,
+            use_sde: bool = False,
+            log_std_init: float = -3,
+            full_std: bool = True,
+            use_expln: bool = False,
+            clip_mean: float = 2.0,
+            normalize_images: bool = False,
+            deterministic: bool = False,
             squash_output: bool = True,
     ):
         super().__init__(
             observation_space,
             action_space,
-            features_extractor=features_extractor,
-            normalize_images=normalize_images,
-            squash_output=True,
+            net_arch,
+            features_extractor,
+            features_dim,
+            activation_fn,
+            use_sde,
+            log_std_init,
+            full_std,
+            use_expln,
+            clip_mean,
+            normalize_images
         )
-
-        self.net_arch = net_arch
-        self.features_dim = features_dim
-        self.activation_fn = activation_fn
-
-        action_dim = get_action_dim(self.action_space)
-        actor_net = create_mlp(features_dim, net_arch, action_dim, activation_fn, squash_output=squash_output)
-
+        self._squash_output = squash_output
         # Deterministic action
         self.deterministic = deterministic
-        self.mu = nn.Sequential(*actor_net)
-        if not deterministic:
-            self.sigma = nn.Sequential(*actor_net)
-
-    def _get_constructor_parameters(self) -> Dict[str, Any]:
-        data = super()._get_constructor_parameters()
-
-        data.update(
-            dict(
-                net_arch=self.net_arch,
-                features_dim=self.features_dim,
-                activation_fn=self.activation_fn,
-                features_extractor=self.features_extractor,
+        # self.latent_pi = create_mlp(input_dim=features_dim, layer=net_arch, activation_fn=activation_fn, squash_output=False)
+        self.latent_pi = nn.Flatten()
+        self.mu = create_mlp(input_dim=features_dim, layer=net_arch, activation_fn=activation_fn, output_dim=self.action_space.shape[0], squash_output=False)
+        self.log_std = create_mlp(input_dim=features_dim, layer=net_arch, activation_fn=activation_fn, output_dim=self.action_space.shape[0], squash_output=False)
+        action_dim = get_action_dim(self.action_space)
+        if self.use_sde:
+            self.action_dist = StateDependentNoiseDistribution(
+                action_dim, full_std=full_std, use_expln=use_expln, learn_features=True, squash_output=self.squash_output
             )
-        )
-        return data
-
-    def get_action(self, obs: th.Tensor, rand_factor=0.) -> th.Tensor:
-        features = self.extract_features(obs, self.features_extractor)
-        mu = self.mu(features)
-        if self.deterministic:
-            return mu + th.randn_like(mu, device=self.device).clip(min=-1, max=1) * rand_factor
         else:
-            return mu + th.randn(mu.shape, device=self.device) * self.sigma(features) * rand_factor
+            if self.squash_output:
+                self.action_dist = SquashedDiagGaussianDistribution(action_dim)  # type: ignore[assignment]
+            else:
+                self.action_dist = DiagGaussianDistribution(action_dim)
 
-    def forward(self, obs: th.Tensor, rand_factor=1.) -> th.Tensor:
-        features = self.extract_features(obs, self.features_extractor)
-        return self.mu(features)
+    def forward(self, obs: PyTorchObs, deterministic: bool = False) -> th.Tensor:
+        deterministic = self.deterministic if deterministic is None else deterministic
 
-    def _predict(self, observation: PyTorchObs, deterministic: bool = True) -> th.Tensor:
-        #   Predictions are always deterministic.
-        return self(observation)
+        mean_actions, log_std, kwargs, h = self.get_action_dist_params(obs)
+        # Note: the action is squashed
+        return self.action_dist.actions_from_params(mean_actions, log_std, deterministic=deterministic, **kwargs), h
+
+    def get_action_dist_params(self, obs: PyTorchObs) -> Tuple[th.Tensor, th.Tensor, Dict[str, th.Tensor], th.Tensor]:
+        """
+        Get the parameters for the action distribution.
+
+        :param obs:
+        :return:
+            Mean, standard deviation and optional keyword arguments.
+        """
+        # obs = obs.as_tensor(device=self.device)
+        if self.features_extractor.is_recurrent:
+            features, h = self.extract_features(obs, self.features_extractor)
+        else:
+            features, h = self.extract_features(obs, self.features_extractor), None
+
+        latent_pi = self.latent_pi(features)
+        mean_actions = self.mu(latent_pi)
+
+        if self.use_sde:
+            return mean_actions, self.log_std, dict(latent_sde=latent_pi)
+        # Unstructured exploration (Original implementation)
+        log_std = self.log_std(latent_pi)  # type: ignore[operator]
+        # Original Implementation to cap the standard deviation
+        log_std = th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        return mean_actions, log_std, {}, h
+
+    def action_log_prob(self, obs: PyTorchObs) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
+        # return action and associated log prob
+        mean_actions, log_std, kwargs, h = self.get_action_dist_params(obs)
+        return *self.action_dist.log_prob_from_params(mean_actions, log_std, **kwargs), h
 
 
-class TD3Policy(BasePolicy):
-    """
-    Policy class (with both actor and critic) for TD3.
-
-    :param observation_space: Observation space
-    :param action_space: Action space
-    :param lr_schedule: Learning rate schedule (could be constant)
-    :param net_arch: The specification of the policy and value networks.
-    :param activation_fn: Activation function
-    :param features_extractor_class: Features extractor to use.
-    :param features_extractor_kwargs: Keyword arguments
-        to pass to the features extractor.
-    :param normalize_images: Whether to normalize images or not,
-         dividing by 255.0 (True by default)
-    :param optimizer_class: The optimizer to use,
-        ``th.optim.Adam`` by default
-    :param optimizer_kwargs: Additional keyword arguments,
-        excluding the learning rate, to pass to the optimizer
-    :param n_critics: Number of critic networks to create.
-    :param share_features_extractor: Whether to share or not the features extractor
-        between the actor and the critic (this saves computation time)
-    """
-
-    actor: Actor
-    actor_target: Actor
-    critic: ContinuousCritic
-    critic_target: ContinuousCritic
-
+class MTDPolicy(SACPolicy):
     def __init__(
             self,
             observation_space: spaces.Space,
@@ -132,205 +187,96 @@ class TD3Policy(BasePolicy):
             lr_schedule: Schedule,
             net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
             activation_fn: Type[nn.Module] = nn.ReLU,
-            features_extractor_class: Type[BaseFeaturesExtractor] = None,
+            use_sde: bool = False,
+            log_std_init: float = -3,
+            use_expln: bool = False,
+            clip_mean: float = 2.0,
+            features_extractor_class: Type[BaseFeaturesExtractor] = FlattenExtractor,
             features_extractor_kwargs: Optional[Dict[str, Any]] = None,
-            pi_features_extractor_class: Type[BaseFeaturesExtractor] = None,
-            pi_features_extractor_kwargs: Optional[Dict[str, Any]] = None,
-            vf_features_extractor_class: Type[BaseFeaturesExtractor] = None,
-            vf_features_extractor_kwargs: Optional[Dict[str, Any]] = None,
             normalize_images: bool = True,
             optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
             optimizer_kwargs: Optional[Dict[str, Any]] = None,
             n_critics: int = 2,
             share_features_extractor: bool = False,
-            deterministic: bool = True,
-            squash_output: bool = False,
+            deterministic=False,
+            squash_output=True,
     ):
-        if features_extractor_class is None:
-            assert pi_features_extractor_class is not None and vf_features_extractor_class is not None
-            features_extractor_class = pi_features_extractor_class
-            features_extractor_kwargs = pi_features_extractor_kwargs
-            assert not share_features_extractor, "Shared features extractor is not supported when different extractors are used"
-        else:
-            assert pi_features_extractor_class is None and vf_features_extractor_class is None
-            pi_features_extractor_class = features_extractor_class
-            pi_features_extractor_kwargs = features_extractor_kwargs
-            vf_features_extractor_class = features_extractor_class
-            vf_features_extractor_kwargs = features_extractor_kwargs
-
-        self.pi_features_extractor_class = pi_features_extractor_class
-        self.pi_features_extractor_kwargs = pi_features_extractor_kwargs
-        self.vf_features_extractor_class = vf_features_extractor_class
-        self.vf_features_extractor_kwargs = vf_features_extractor_kwargs
+        self.deterministic = deterministic
+        self._squash_output = squash_output
 
         super().__init__(
-            observation_space,
-            action_space,
-            features_extractor_class,
-            features_extractor_kwargs,
+            observation_space=observation_space,
+            action_space=action_space,
+            lr_schedule=lr_schedule,
+            net_arch=net_arch,
+            activation_fn=activation_fn,
+            use_sde=use_sde,
+            log_std_init=log_std_init,
+            use_expln=use_expln,
+            clip_mean=clip_mean,
+            features_extractor_class=features_extractor_class,
+            features_extractor_kwargs=features_extractor_kwargs,
+            normalize_images=normalize_images,
             optimizer_class=optimizer_class,
             optimizer_kwargs=optimizer_kwargs,
-            squash_output=True,
-            normalize_images=normalize_images,
+            n_critics=n_critics,
+            share_features_extractor=share_features_extractor,
         )
-
-        # Default network architecture, from the original paper
-        if net_arch is None:
-            if features_extractor_class == NatureCNN:
-                net_arch = [256, 256]
-            else:
-                net_arch = [400, 300]
-
-        actor_arch, critic_arch = get_actor_critic_arch(net_arch)
-
-        self.deterministic = deterministic
-        self.net_arch = net_arch
-        self.activation_fn = activation_fn
-        self.net_args = {
-            "observation_space": self.observation_space,
-            "action_space": self.action_space,
-            "net_arch": actor_arch,
-            "activation_fn": self.activation_fn,
-            "normalize_images": normalize_images,
-            "deterministic": self.deterministic,
-        }
-        self.actor_kwargs = self.net_args.copy()
-        self.actor_kwargs.update(
-            {
-                "squash_output": squash_output,
-            }
-        )
-        self.critic_kwargs = self.net_args.copy()
-        self.critic_kwargs.update(
-            {
-                "n_critics": n_critics,
-                "net_arch": critic_arch,
-                "share_features_extractor": share_features_extractor,
-            }
-        )
-
-        self.share_features_extractor = share_features_extractor
-
-        self._build(lr_schedule)
-
-        self._init()
-
-    def _init(self):
-        def get_all_linear_submodules(father_module):
-            linear_submodules = []
-            for submodule in father_module.children():
-                if isinstance(submodule, nn.Linear):
-                    linear_submodules.append(submodule)
-                else:
-                    linear_submodules.extend(get_all_linear_submodules(submodule))
-            return linear_submodules
-
-        # He Kaiming Initialization
-        for net in [self.actor, self.critic, ]:
-            # list all the extractors
-            for module in get_all_linear_submodules(net):
-                if isinstance(module, nn.Linear):
-                    nn.init.kaiming_uniform_(module.weight, a=0.0)
-                    nn.init.constant_(module.bias, 0.0)
-
-        # copy the weight of the actor to the target actor
-        self.actor_target.load_state_dict(self.actor.state_dict())
-        # copy the weight of the critic to the target critic
-        self.critic_target.load_state_dict(self.critic.state_dict())
-
-    def _build(self, lr_schedule: Schedule) -> None:
-        # Create actor and target
-        # the features extractor should not be shared
-        self.actor = self.make_actor(features_extractor=None)
-        self.actor_target = self.make_actor(features_extractor=None)
-        # Initialize the target to have the same weights as the actor
-        self.actor_target.load_state_dict(self.actor.state_dict())
-
-        self.actor.optimizer = self.optimizer_class(
-            self.actor.parameters(),
-            lr=lr_schedule(1),  # type: ignore[call-arg]
-            **self.optimizer_kwargs,
-        )
-
-        if self.share_features_extractor:
-            self.critic = self.make_critic(features_extractor=self.actor.features_extractor)
-            # Critic target should not share the features extractor with critic
-            # but it can share it with the actor target as actor and critic are sharing
-            # the same features_extractor too
-            # NOTE: as a result the effective poliak (soft-copy) coefficient for the features extractor
-            # will be 2 * tau instead of tau (updated one time with the actor, a second time with the critic)
-            self.critic_target = self.make_critic(features_extractor=self.actor_target.features_extractor)
-        else:
-            # Create new features extractor for each network
-            self.critic = self.make_critic(features_extractor=None)
-            self.critic_target = self.make_critic(features_extractor=None)
-
-        self.critic_target.load_state_dict(self.critic.state_dict())
-        self.critic.optimizer = self.optimizer_class(
-            self.critic.parameters(),
-            lr=lr_schedule(1),  # type: ignore[call-arg]
-            **self.optimizer_kwargs,
-        )
-
-        # Target networks should always be in eval mode
-        self.actor_target.set_training_mode(False)
-        self.critic_target.set_training_mode(False)
-
-    def _get_constructor_parameters(self) -> Dict[str, Any]:
-        data = super()._get_constructor_parameters()
-
-        data.update(
-            dict(
-                net_arch=self.net_arch,
-                activation_fn=self.net_args["activation_fn"],
-                n_critics=self.critic_kwargs["n_critics"],
-                lr_schedule=self._dummy_schedule,  # dummy lr schedule, not needed for loading policy alone
-                optimizer_class=self.optimizer_class,
-                optimizer_kwargs=self.optimizer_kwargs,
-                features_extractor_class=self.features_extractor_class,
-                features_extractor_kwargs=self.features_extractor_kwargs,
-                share_features_extractor=self.share_features_extractor,
-            )
-        )
-        return data
 
     def make_actor(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> Actor:
-        if features_extractor is None:
-            features_extractor = self.pi_features_extractor_class(self.observation_space, **self.pi_features_extractor_kwargs)
         actor_kwargs = self._update_features_extractor(self.actor_kwargs, features_extractor)
+        actor_kwargs["deterministic"] = self.deterministic
+        actor_kwargs["squash_output"] = self.squash_output
+
         return Actor(**actor_kwargs).to(self.device)
 
     def make_critic(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> ContinuousCritic:
-        if features_extractor is None:
-            features_extractor = self.vf_features_extractor_class(self.observation_space, **self.vf_features_extractor_kwargs)
         critic_kwargs = self._update_features_extractor(self.critic_kwargs, features_extractor)
-        critic_kwargs.pop("deterministic")
         return ContinuousCritic(**critic_kwargs).to(self.device)
 
-    def forward(self, observation: PyTorchObs, deterministic: bool = True) -> th.Tensor:
-        return self._predict(observation, deterministic=deterministic), self.critic(observation, deterministic=deterministic)
+    def predict(
+            self,
+            observation: Union[np.ndarray, Dict[str, np.ndarray]],
+            state: Optional[Tuple[np.ndarray, ...]] = None,
+            episode_start: Optional[np.ndarray] = None,
+            deterministic: bool = False,
+    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]], th.Tensor]:
+        self.set_training_mode(False)
 
-    def _predict(self, observation: PyTorchObs, deterministic: bool = True) -> th.Tensor:
-        #   Predictions are always deterministic.
-        return self.actor(observation)
+        # Check for common mistake that the user does not mix Gym/VecEnv API
+        # Tuple obs are not supported by SB3, so we can safely do that check
+        if isinstance(observation, tuple) and len(observation) == 2 and isinstance(observation[1], dict):
+            raise ValueError(
+                "You have passed a tuple to the predict() function instead of a Numpy array or a Dict. "
+                "You are probably mixing Gym API with SB3 VecEnv API: `obs, info = env.reset()` (Gym) "
+                "vs `obs = vec_env.reset()` (SB3 VecEnv). "
+                "See related issue https://github.com/DLR-RM/stable-baselines3/issues/1694 "
+                "and documentation for more information: https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html#vecenv-api-vs-gym-api"
+            )
 
-    def set_training_mode(self, mode: bool) -> None:
-        """
-        Put the policy in either training or evaluation mode.
+        obs_tensor, vectorized_env = self.obs_to_tensor(observation)
 
-        This affects certain modules, such as batch normalisation and dropout.
+        with th.no_grad():
+            actions, h = self._predict(obs_tensor, deterministic=deterministic)
+        # Convert to numpy, and reshape to the original action shape
+        actions = actions.cpu().numpy().reshape((-1, *self.action_space.shape))  # type: ignore[misc]
 
-        :param mode: if true, set to training mode, else set to evaluation mode
-        """
-        self.actor.set_training_mode(mode)
-        self.critic.set_training_mode(mode)
-        self.training = mode
+        if isinstance(self.action_space, spaces.Box):
+            if self.squash_output:
+                # Rescale to proper domain when using squashing
+                actions = self.unscale_action(actions)  # type: ignore[assignment, arg-type]
+            else:
+                # Actions could be on arbitrary scale, so clip the actions to avoid
+                # out of bound error (e.g. if sampling from a Gaussian distribution)
+                actions = np.clip(actions, self.action_space.low, self.action_space.high)  # type: ignore[assignment, arg-type]
+
+        return actions, state  # type: ignore[return-value]
 
 
-MlpPolicy = TD3Policy
+MlpPolicy = MTDPolicy
 
 
-class CnnPolicy(TD3Policy):
+class CnnPolicy(MTDPolicy):
     """
     Policy class (with both actor and critic) for TD3.
 
@@ -360,13 +306,18 @@ class CnnPolicy(TD3Policy):
             lr_schedule: Schedule,
             net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
             activation_fn: Type[nn.Module] = nn.ReLU,
-            features_extractor_class: Type[BaseFeaturesExtractor] = NatureCNN,
+            use_sde: bool = False,
+            log_std_init: float = -3,
+            use_expln: bool = False,
+            clip_mean: float = 2.0,
+            features_extractor_class: Type[BaseFeaturesExtractor] = CombinedExtractor,
             features_extractor_kwargs: Optional[Dict[str, Any]] = None,
             normalize_images: bool = True,
             optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
             optimizer_kwargs: Optional[Dict[str, Any]] = None,
             n_critics: int = 2,
             share_features_extractor: bool = False,
+            deterministic: bool = False,
     ):
         super().__init__(
             observation_space,
@@ -374,6 +325,10 @@ class CnnPolicy(TD3Policy):
             lr_schedule,
             net_arch,
             activation_fn,
+            use_sde,
+            log_std_init,
+            use_expln,
+            clip_mean,
             features_extractor_class,
             features_extractor_kwargs,
             normalize_images,
@@ -381,10 +336,11 @@ class CnnPolicy(TD3Policy):
             optimizer_kwargs,
             n_critics,
             share_features_extractor,
+            deterministic
         )
 
 
-class MultiInputPolicy(TD3Policy):
+class MultiInputPolicy(MTDPolicy):
     """
     Policy class (with both actor and critic) for TD3 to be used with Dict observation spaces.
 
@@ -409,24 +365,24 @@ class MultiInputPolicy(TD3Policy):
 
     def __init__(
             self,
-            observation_space: spaces.Dict,
+            observation_space: spaces.Space,
             action_space: spaces.Box,
             lr_schedule: Schedule,
             net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
             activation_fn: Type[nn.Module] = nn.ReLU,
-            features_extractor_class: Type[BaseFeaturesExtractor] = CombinedExtractor,
+            use_sde: bool = False,
+            log_std_init: float = -3,
+            use_expln: bool = False,
+            clip_mean: float = 2.0,
+            features_extractor_class: Type[BaseFeaturesExtractor] = FlattenExtractor,
             features_extractor_kwargs: Optional[Dict[str, Any]] = None,
-            pi_features_extractor_class: Type[BaseFeaturesExtractor] = None,
-            pi_features_extractor_kwargs: Optional[Dict[str, Any]] = None,
-            vf_features_extractor_class: Type[BaseFeaturesExtractor] = None,
-            vf_features_extractor_kwargs: Optional[Dict[str, Any]] = None,
             normalize_images: bool = True,
             optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
             optimizer_kwargs: Optional[Dict[str, Any]] = None,
             n_critics: int = 2,
             share_features_extractor: bool = False,
-            deterministic: bool = True,
-            squash_output: bool = False,
+            deterministic=False,
+            squash_output=True,
     ):
         super().__init__(
             observation_space,
@@ -434,12 +390,12 @@ class MultiInputPolicy(TD3Policy):
             lr_schedule,
             net_arch,
             activation_fn,
+            use_sde,
+            log_std_init,
+            use_expln,
+            clip_mean,
             features_extractor_class,
             features_extractor_kwargs,
-            pi_features_extractor_class,
-            pi_features_extractor_kwargs,
-            vf_features_extractor_class,
-            vf_features_extractor_kwargs,
             normalize_images,
             optimizer_class,
             optimizer_kwargs,

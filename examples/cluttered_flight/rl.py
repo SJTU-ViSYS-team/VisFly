@@ -7,13 +7,13 @@ import torch
 import time
 
 sys.path.append(os.getcwd())
-from utils.policies import extractors
-from utils.algorithms.ppo import ppo
-from utils import savers
+from VisFly.utils.policies import extractors
+from VisFly.utils.algorithms.ppo import ppo
+from VisFly.utils import savers
 import torch as th
-from envs.NavigationEnv import NavigationEnv
-from utils.launcher import rl_parser, training_params
-from utils.type import Uniform
+from VisFly.envs.NavigationEnv import NavigationEnv
+from VisFly.utils.launcher import rl_parser, training_params
+from VisFly.utils.type import Uniform
 
 args = rl_parser().parse_args()
 """ SAVED HYPERPARAMETERS """
@@ -32,7 +32,7 @@ random_kwargs = {
     "state_generator":
         {
             "class": "Uniform",
-            "kwargs":[
+            "kwargs": [
                 {"position": {"mean": [1., 0., 1.5], "half": [0.0, 2., 1.]}},
             ]
         }

@@ -7,10 +7,11 @@ from gymnasium import spaces
 import numpy as np
 from abc import ABC, abstractmethod
 import torch as th
-from ..utils.type import Uniform
-from ..utils.randomization import UniformStateRandomizer
+from ...utils.type import Uniform
+from ...utils.randomization import UniformStateRandomizer
 from habitat_sim import SensorType
-from ..utils.type import ACTION_TYPE
+from ...utils.type import ACTION_TYPE
+
 
 class DroneGymEnvsBase(VecEnv):
     def __init__(
@@ -36,8 +37,7 @@ class DroneGymEnvsBase(VecEnv):
             num_scene=num_scene,
             seed=seed,
             visual=visual,
-            requires_grad=requires_grad,
-            # device=device,  # because at least under 1e3 (common useful range) envs, cpu is faster than gpu
+            device=th.device("cpu"),  # because at least under 1e3 (common useful range) envs, cpu is faster than gpu
             dynamics_kwargs=dynamics_kwargs,
             random_kwargs=random_kwargs,
             scene_kwargs=scene_kwargs,
@@ -53,7 +53,7 @@ class DroneGymEnvsBase(VecEnv):
         self.num_envs = self.num_agent
 
         self.requires_grad = requires_grad
-
+        self.max_sense_radius = 10
         # key interference of gym env
         state_size = 13 if self.envs.dynamics.is_quat_output else 12
 
@@ -86,7 +86,7 @@ class DroneGymEnvsBase(VecEnv):
                     )
         if latent_dim is not None:
             self.observation_space["latent"] = spaces.Box(low=-np.inf, high=np.inf, shape=(latent_dim,), dtype=np.float32)
-            self.latent = th.zeros((self.num_envs, latent_dim))
+            self.latent = th.zeros((self.num_envs, latent_dim), device=self.device)
         else:
             self.latent = None
 
@@ -139,7 +139,9 @@ class DroneGymEnvsBase(VecEnv):
         # self._done = self._success | (self._step_count >= self.max_episode_steps) | self.get_done()
 
         # update and record _info: eposide, timeout
+        # full_state = self.full_state
         for indice in range(self.num_agent):
+            # self._info[indice]["state"]= full_state[indice].cpu().clone().detach().numpy()
             # i don't know why, but whatever this returned info data address should be strictly independent with torch.
             if self._done[indice]:
                 if self._success[indice]:
@@ -173,7 +175,7 @@ class DroneGymEnvsBase(VecEnv):
 
             return self.get_observation(), _reward, _done, _info
         else:
-            # model based RL
+            # analytical gradient RL
             return observations, self._reward, self._done, self._info
 
     def detach(self):
@@ -184,30 +186,49 @@ class DroneGymEnvsBase(VecEnv):
         self._step_count = self._step_count.clone().detach()
         self._done = self._done.clone().detach()
 
-    def reset(self):
+    def simple_detach(self):
+        self._rewards = self._rewards.clone().detach()
+        self._reward = self._reward.clone().detach()
+        self._action = self._action.clone().detach()
+        self._step_count = self._step_count.clone().detach()
+        self._done = self._done.clone().detach()
+
+    def reset(self, state=None):
         self._step_count = th.zeros((self.num_agent,), dtype=th.int32)
         self._reward = th.zeros((self.num_agent,))
         self._rewards = th.zeros((self.num_agent,))
         self._done = th.zeros(self.num_agent, dtype=bool)
         self._info = [{"TimeLimit.truncated": False} for _ in range(self.num_agent)]
+        if self.latent is not None:
+            self.latent = th.zeros((self.num_agent, self.latent.shape[1]), device=self.device)
+
         self.envs.reset()
         return self.get_observation()
 
-    def reset_by_id(self, indices=None):
-        indices = th.arange(self.num_envs) if indices is None else indices
-        self._reward[indices] = 0
-        self._rewards[indices] = 0
-        self._done[indices] = False
-        self._step_count[indices] = 0
+    def reset_by_id(self, indices=None, state=None):
+        if indices is None:
+            self._reward = th.zeros((self.num_agent,))
+            self._rewards = th.zeros((self.num_agent,))
+            self._done = th.zeros(self.num_agent, dtype=bool)
+            self._step_count = th.zeros((self.num_agent,), dtype=th.int32)
+        else:
+            self._reward[indices] = 0
+            self._rewards[indices] = 0
+            self._done[indices] = False
+            self._step_count[indices] = 0
 
-        self.envs.reset_agents(indices)
+        self.envs.reset_agents(indices, state=state)
+        indices = range(self.num_agent) if indices is None else indices
         for indice in indices:
             self._info[indice] = {
                 "TimeLimit.truncated": False,
             }
 
         if self.latent is not None:
-            self.latent[indices] = 0
+            if indices is None:
+                self.latent = th.zeros((self.num_agent, self.latent.shape[1]), device=self.device)
+            else:
+                self.latent[indices] = 0
 
         return self.sensor_obs
 
@@ -329,6 +350,10 @@ class DroneGymEnvsBase(VecEnv):
     @property
     def collision_point(self):
         return self.envs.collision_point
+
+    @property
+    def full_state(self):
+        return self.envs.full_state
 
     def env_is_wrapped(self):
         return False

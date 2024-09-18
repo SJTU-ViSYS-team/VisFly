@@ -7,7 +7,7 @@ import cv2
 import sys
 import numpy as np
 import copy
-from utils.FigFashion.FigFashion import FigFon
+from .FigFashion.FigFashion import FigFon
 
 FigFon.set_fashion("IEEE")
 
@@ -36,7 +36,7 @@ class TestBase:
             self,
             is_fig: bool = False,
             is_video: bool = False,
-            is_obs_video: bool = False,
+            is_sub_video: bool = False,
             is_fig_save: bool = False,
             is_video_save: bool = False,
             is_render: bool = False,
@@ -90,7 +90,7 @@ class TestBase:
                 for i, fig in enumerate(figs):
                     self.save_fig(fig, c=i)
         if is_video:
-            self.play(is_obs_video=is_obs_video)
+            self.play(is_sub_video=is_sub_video)
             if is_video_save:
                 self.save_video()
 
@@ -99,7 +99,7 @@ class TestBase:
         raise NotImplementedError
 
     # @abstractmethod
-    def play(self, render_name: Union[List[str], None] = "video",is_obs_video=False):
+    def play(self, render_name: Union[List[str], None] = "video",is_sub_video=False):
         """
         how to play the video
         """
@@ -109,7 +109,7 @@ class TestBase:
         for image, t, obs in zip(self.render_image_all, self.t, self.obs_all):
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
             cv2.imshow(winname=render_name, mat=image)
-            if is_obs_video:
+            if is_sub_video:
                 for name in self._img_names:
                     cv2.imshow(winname=name,
                                mat=np.hstack(np.transpose(obs[name], (0,2,3,1) ))

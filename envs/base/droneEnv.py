@@ -1,14 +1,14 @@
 import numpy as np
 from .dynamics import Dynamics
-from ..utils.sceneDatasets import SceneManager
+from ...utils.sceneDatasets import SceneManager
 from typing import List, Union, Tuple, Dict, Optional
-from ..utils.randomization import UniformStateRandomizer, NormalStateRandomizer
-from ..utils.type import Uniform, Normal
+from ...utils.randomization import UniformStateRandomizer, NormalStateRandomizer
+from ...utils.type import Uniform, Normal
 from torch import Tensor
 from typing import Optional, Type
 import torch as th
 import json
-from ..utils.common import habitat_to_std
+from ...utils.common import habitat_to_std
 
 IS_BBOX_COLLISION = True
 
@@ -22,7 +22,6 @@ class DroneEnvsBase:
             num_scene: int = 1,
             seed: int = 42,
             visual: bool = True,
-            requires_grad: bool = False,
             random_kwargs: Optional[Dict] = {},
             dynamics_kwargs: Optional[Dict] = {},
             scene_kwargs: Optional[Dict] = {},
@@ -51,7 +50,6 @@ class DroneEnvsBase:
         self.dynamics = Dynamics(
             num=num_agent_per_scene * num_scene,
             seed=seed,
-            requires_grad=requires_grad,
             device=device,
             **dynamics_kwargs
         )
@@ -203,7 +201,7 @@ class DroneEnvsBase:
 
         return stateGenerators
 
-    def _generate_state(self, indices: Optional[List[int]] = None) -> Tuple[Tensor, Optional[np.ndarray]]:
+    def _generate_state(self, indices: Optional[List[int]] = None) -> Tuple[Tensor]:
         indices = np.arange(self.dynamics.num) if indices is None else indices
         indices = th.as_tensor([indices], device=self.device) if not hasattr(indices, "__iter__") else indices
         positions, orientations, velocities, angular_velocities = \
@@ -215,17 +213,33 @@ class DroneEnvsBase:
 
         return positions, orientations, velocities, angular_velocities
 
-    def reset(self) -> Tuple[Tensor, Optional[np.ndarray]]:
+    def reset(self, state=None) -> Tuple[Tensor, Optional[np.ndarray]]:
         if self.visual:
             if self._scene_iter or self.sceneManager.scenes[0] is None:
                 self.sceneManager.load_scenes()
-        self.reset_agents()
+        self.reset_agents(indices=None, state=state)
         return self.state, self.sensor_obs
 
     def reset_agents(self, indices: Optional[List] = None, state=None) -> Tuple[Tensor, Optional[np.ndarray]]:
         indices = indices if (indices is None or hasattr(indices, "__iter__")) else th.as_tensor([indices], device=self.device)
-        pos, ori, vel, ori_vel = self._generate_state(indices) if state is None else state
-        self.dynamics.reset(pos=pos, ori=ori, vel=vel, ori_vel=ori_vel, indices=indices)
+        motor_speed, thrust = None, None
+        if state is not None:
+            if isinstance(state, th.Tensor):
+                state = state.to(self.device)
+                pos, ori, vel, ori_vel, motor_speed, thrust = \
+                    state[:,:3].clone().detach(), state[:,3:7].clone().detach(), state[:,7:10].clone().detach(),\
+                        state[:,10:13].clone().detach(), state[:,13:17].clone().detach(), state[:,17:21].clone().detach()
+                # state[:, :3], state[:, 3:7], state[:, 7:10], state[:, 10:13], state[:, 13:17], state[:, 17:21]
+            else:
+                if len(state) == 4:
+                    pos, ori, vel, ori_vel = state
+                elif len(state) == 6:
+                    pos, ori ,vel, ori_vel, motor_speed, thrust = state
+                else:
+                    raise ValueError("State should be a tuple of 4 or 6 elements.")
+        else:
+            pos, ori, vel, ori_vel = self._generate_state(indices)
+        self.dynamics.reset(pos=pos, ori=ori, vel=vel, ori_vel=ori_vel, motor_omega=motor_speed, thrusts=thrust, indices=indices)
         if self.visual:
             self.sceneManager.reset_agents(std_positions=pos, std_orientations=ori, indices=indices)
             self.update_observation(indices=indices)
@@ -381,6 +395,10 @@ class DroneEnvsBase:
     @property
     def thrusts(self):
         return self.dynamics.thrusts
+
+    @property
+    def full_state(self):
+        return self.dynamics.full_state
 
     # @property
     # def acceleration(self):

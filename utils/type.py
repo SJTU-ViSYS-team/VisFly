@@ -139,3 +139,16 @@ class TensorDict(dict):
     def cpu(self):
         for key, value in self.items():
             self[key] = self[key].cpu()
+
+    def as_tensor(self, device=th.device("cpu")):
+        d = {}
+        for key, value in self.items():
+            d[key] = th.as_tensor(value, device=device)
+
+        return d
+
+    def to(self, device):
+        for key, value in self.items():
+            self[key] = value.to(device)
+        return self
+

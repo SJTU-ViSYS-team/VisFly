@@ -15,13 +15,13 @@ from torchvision import models
 
 
 class CustomBaseFeaturesExtractor(BaseFeaturesExtractor):
-    is_recurrent = False
 
     def __init__(
             self,
             observation_space: spaces.Dict,
             net_arch: Dict,
             activation_fn: Type[nn.Module] = nn.ReLU,
+            features_dim: int = 1,
     ):
         self._features_dim = 1
         super(CustomBaseFeaturesExtractor, self).__init__(observation_space, self._features_dim)
@@ -54,6 +54,10 @@ class CustomBaseFeaturesExtractor(BaseFeaturesExtractor):
 
     def forward(self, observations):
         return self.extract_with_recurrent(observations)
+
+    @property
+    def is_recurrent(self):
+        return self._is_recurrent
 
 
 def _get_conv_output(net, shape):
@@ -529,7 +533,6 @@ class SwarmStateTargetImageExtractor(BaseFeaturesExtractor):
         # 合并state,target特征和image特征
         return th.cat(features, dim=1)
 
-
 # class SwarmStateTargetImageExtractor(StateTargetImageExtractor):
 #     backbone_alias: Dict = {
 #         "resnet18": models.resnet18,
@@ -571,5 +574,3 @@ class SwarmStateTargetImageExtractor(BaseFeaturesExtractor):
 #             # each agent state observation as batch
 #             swarm_features.append(self.swarm_extractor(observations['swarm'][:, i, :]))
 #         return th.cat([super_features] + swarm_features, dim=1)
-
-

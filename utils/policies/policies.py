@@ -11,7 +11,7 @@ from typing import List, Optional, Type, Union, Dict
 
 from stable_baselines3.common.type_aliases import Schedule, PyTorchObs
 from torchvision import models
-from utils.policies.extractors import create_mlp
+from .extractors import create_mlp
 from stable_baselines3.common.policies import MlpExtractor
 
 
@@ -225,6 +225,25 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
         values = self.value_net(latent_vf)
         entropy = distribution.entropy()
         return values, log_prob, entropy
+
+    def forward_and_evaluate_actions(self, obs:PyTorchObs):
+        if hasattr(self.features_extractor, "recurrent_extractor"):
+            features, h = self.extract_features(obs)
+        else:
+            features = self.extract_features(obs)
+
+        if self.share_features_extractor:
+            latent_pi, latent_vf = self.mlp_extractor(features)
+        else:
+            pi_features, vf_features = features
+            latent_pi = self.mlp_extractor.forward_actor(pi_features)
+            latent_vf = self.mlp_extractor.forward_critic(vf_features)
+        distribution = self._get_action_dist_from_latent(latent_pi)
+        actions = distribution.get_actions(deterministic=False)
+        log_prob = distribution.log_prob(actions)
+        values = self.value_net(latent_vf)
+        entropy = distribution.entropy()
+        return actions, values, log_prob, entropy
 
     def get_distribution(self, obs: PyTorchObs, latent: th.Tensor = None) -> Distribution:
         """

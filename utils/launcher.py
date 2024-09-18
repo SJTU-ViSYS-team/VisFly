@@ -2,13 +2,13 @@ import argparse
 
 training_params = {
     "time": None,
-    "num_envs": 96,
-    "learning_step": 2e7,
+    "num_envs": 100,
+    "learning_step": 1e7,
     "policy": None,
     "algorithm": "PPO",
-    "learning_rate": 3e-4,
+    "learning_rate": 1e-4,
     "n_steps": 256,
-    "batch_size": 96*256,
+    "batch_size": 10*256,
     "gamma": 0.99,
     "gae_lambda": 0.95,
     "ent_coef": 0.00,

@@ -78,7 +78,9 @@ from stable_baselines3.common.env_util import is_wrapped
 from stable_baselines3.common.logger import Logger
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env.patch_gym import _convert_space, _patch_env
-from utils.policies.policies import CustomMultiInputActorCriticPolicy
+from ..policies.policies import CustomMultiInputActorCriticPolicy
+
+
 def obs_as_tensor(obs: Union[np.ndarray, Dict[str, np.ndarray]], obs_space: Union[spaces.Dict, spaces.Box], device: th.device) -> Union[th.Tensor, TensorDict]:
     """
     Moves the observation to the given device.
@@ -93,6 +95,7 @@ def obs_as_tensor(obs: Union[np.ndarray, Dict[str, np.ndarray]], obs_space: Unio
         return {key: th.as_tensor(np.clip(_obs, obs_space[key].low, obs_space[key].high), device=device) for (key, _obs) in obs.items()}
     else:
         raise Exception(f"Unrecognized type of observation {type(obs)}")
+
 
 class RolloutBuffer(BaseBuffer):
     """
@@ -127,14 +130,14 @@ class RolloutBuffer(BaseBuffer):
     values: np.ndarray
 
     def __init__(
-        self,
-        buffer_size: int,
-        observation_space: spaces.Space,
-        action_space: spaces.Space,
-        device: Union[th.device, str] = "auto",
-        gae_lambda: float = 1,
-        gamma: float = 0.99,
-        n_envs: int = 1,
+            self,
+            buffer_size: int,
+            observation_space: spaces.Space,
+            action_space: spaces.Space,
+            device: Union[th.device, str] = "auto",
+            gae_lambda: float = 1,
+            gamma: float = 0.99,
+            n_envs: int = 1,
     ):
         super().__init__(
             buffer_size, observation_space, action_space, device, n_envs=n_envs
@@ -163,7 +166,7 @@ class RolloutBuffer(BaseBuffer):
         super().reset()
 
     def compute_returns_and_advantage(
-        self, last_values: th.Tensor, dones: np.ndarray
+            self, last_values: th.Tensor, dones: np.ndarray
     ) -> None:
         """
         Post-processing step: compute the lambda-return (TD(lambda) estimate)
@@ -196,12 +199,12 @@ class RolloutBuffer(BaseBuffer):
                 next_non_terminal = 1.0 - self.episode_starts[step + 1]
                 next_values = self.values[step + 1]
             delta = (
-                self.rewards[step]
-                + self.gamma * next_values * next_non_terminal
-                - self.values[step]
+                    self.rewards[step]
+                    + self.gamma * next_values * next_non_terminal
+                    - self.values[step]
             )
             last_gae_lam = (
-                delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
+                    delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
             )
             self.advantages[step] = last_gae_lam
         # TD(lambda) estimator, see Github PR #375 or "Telescoping in TD(lambda)"
@@ -209,13 +212,13 @@ class RolloutBuffer(BaseBuffer):
         self.returns = self.advantages + self.values
 
     def add(
-        self,
-        obs: np.ndarray,
-        action: np.ndarray,
-        reward: np.ndarray,
-        episode_start: np.ndarray,
-        value: th.Tensor,
-        log_prob: th.Tensor,
+            self,
+            obs: np.ndarray,
+            action: np.ndarray,
+            reward: np.ndarray,
+            episode_start: np.ndarray,
+            value: th.Tensor,
+            log_prob: th.Tensor,
     ) -> None:
         """
         :param obs: Observation
@@ -250,7 +253,7 @@ class RolloutBuffer(BaseBuffer):
             self.full = True
 
     def get(
-        self, batch_size: Optional[int] = None
+            self, batch_size: Optional[int] = None
     ) -> Generator[RolloutBufferSamples, None, None]:
         assert self.full, ""
         indices = np.random.permutation(self.buffer_size * self.n_envs)
@@ -275,13 +278,13 @@ class RolloutBuffer(BaseBuffer):
 
         start_idx = 0
         while start_idx < self.buffer_size * self.n_envs:
-            yield self._get_samples(indices[start_idx : start_idx + batch_size])
+            yield self._get_samples(indices[start_idx: start_idx + batch_size])
             start_idx += batch_size
 
     def _get_samples(
-        self,
-        batch_inds: np.ndarray,
-        env: Optional[VecNormalize] = None,
+            self,
+            batch_inds: np.ndarray,
+            env: Optional[VecNormalize] = None,
     ) -> RolloutBufferSamples:
         data = (
             self.observations[batch_inds],
@@ -335,29 +338,29 @@ class OnPolicyAlgorithm(BaseAlgorithm):
     policy: ActorCriticPolicy
 
     def __init__(
-        self,
-        policy: Union[str, Type[ActorCriticPolicy]],
-        env: Union[GymEnv, str],
-        learning_rate: Union[float, Schedule],
-        n_steps: int,
-        gamma: float,
-        gae_lambda: float,
-        ent_coef: float,
-        vf_coef: float,
-        max_grad_norm: float,
-        use_sde: bool,
-        sde_sample_freq: int,
-        rollout_buffer_class: Optional[Type[RolloutBuffer]] = None,
-        rollout_buffer_kwargs: Optional[Dict[str, Any]] = None,
-        stats_window_size: int = 100,
-        tensorboard_log: Optional[str] = None,
-        monitor_wrapper: bool = True,
-        policy_kwargs: Optional[Dict[str, Any]] = None,
-        verbose: int = 0,
-        seed: Optional[int] = None,
-        device: Union[th.device, str] = "auto",
-        _init_setup_model: bool = True,
-        supported_action_spaces: Optional[Tuple[Type[spaces.Space], ...]] = None,
+            self,
+            policy: Union[str, Type[ActorCriticPolicy]],
+            env: Union[GymEnv, str],
+            learning_rate: Union[float, Schedule],
+            n_steps: int,
+            gamma: float,
+            gae_lambda: float,
+            ent_coef: float,
+            vf_coef: float,
+            max_grad_norm: float,
+            use_sde: bool,
+            sde_sample_freq: int,
+            rollout_buffer_class: Optional[Type[RolloutBuffer]] = None,
+            rollout_buffer_kwargs: Optional[Dict[str, Any]] = None,
+            stats_window_size: int = 100,
+            tensorboard_log: Optional[str] = None,
+            monitor_wrapper: bool = True,
+            policy_kwargs: Optional[Dict[str, Any]] = None,
+            verbose: int = 0,
+            seed: Optional[int] = None,
+            device: Union[th.device, str] = "auto",
+            _init_setup_model: bool = True,
+            supported_action_spaces: Optional[Tuple[Type[spaces.Space], ...]] = None,
     ):
         super().__init__(
             policy=policy,
@@ -419,11 +422,11 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         )
 
     def collect_rollouts(
-        self,
-        env: VecEnv,
-        callback: BaseCallback,
-        rollout_buffer: RolloutBuffer,
-        n_rollout_steps: int,
+            self,
+            env: VecEnv,
+            callback: BaseCallback,
+            rollout_buffer: RolloutBuffer,
+            n_rollout_steps: int,
     ) -> bool:
         """
         Collect experiences using the current policy and fill a ``RolloutBuffer``.
@@ -452,9 +455,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
         while n_steps < n_rollout_steps:
             if (
-                self.use_sde
-                and self.sde_sample_freq > 0
-                and n_steps % self.sde_sample_freq == 0
+                    self.use_sde
+                    and self.sde_sample_freq > 0
+                    and n_steps % self.sde_sample_freq == 0
             ):
                 # Sample a new noise matrix
                 self.policy.reset_noise(env.num_envs)
@@ -504,9 +507,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
             for idx, done in enumerate(dones):
                 if (
-                    done
-                    and infos[idx].get("terminal_observation") is not None
-                    and infos[idx].get("TimeLimit.truncated", False)
+                        done
+                        and infos[idx].get("terminal_observation") is not None
+                        and infos[idx].get("TimeLimit.truncated", False)
                 ):
                     terminal_obs = self.policy.obs_to_tensor(
                         infos[idx]["terminal_observation"]
@@ -549,13 +552,13 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         raise NotImplementedError
 
     def learn(
-        self: SelfOnPolicyAlgorithm,
-        total_timesteps: int,
-        callback: MaybeCallback = None,
-        log_interval: int = 1,
-        tb_log_name: str = "OnPolicyAlgorithm",
-        reset_num_timesteps: bool = True,
-        progress_bar: bool = False,
+            self: SelfOnPolicyAlgorithm,
+            total_timesteps: int,
+            callback: MaybeCallback = None,
+            log_interval: int = 1,
+            tb_log_name: str = "OnPolicyAlgorithm",
+            reset_num_timesteps: bool = True,
+            progress_bar: bool = False,
     ) -> SelfOnPolicyAlgorithm:
         iteration = 0
 
@@ -621,7 +624,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                     self.train()
 
         except KeyboardInterrupt:
-            self.save(self.policy_save_path+"_cache")
+            self.save(self.policy_save_path + "_cache")
 
         callback.on_training_end()
         return self
@@ -709,33 +712,33 @@ class PPO(OnPolicyAlgorithm):
     }
 
     def __init__(
-        self,
-        policy: Union[str, Type[ActorCriticPolicy]],
-        env: Union[GymEnv, str],
-        learning_rate: Union[float, Schedule] = 3e-4,
-        n_steps: int = 2048,
-        batch_size: int = 64,
-        n_epochs: int = 10,
-        gamma: float = 0.99,
-        gae_lambda: float = 0.95,
-        clip_range: Union[float, Schedule] = 0.2,
-        clip_range_vf: Union[None, float, Schedule] = None,
-        normalize_advantage: bool = True,
-        ent_coef: float = 0.0,
-        vf_coef: float = 0.5,
-        max_grad_norm: float = 0.5,
-        use_sde: bool = False,
-        sde_sample_freq: int = -1,
-        rollout_buffer_class: Optional[Type[RolloutBuffer]] = None,
-        rollout_buffer_kwargs: Optional[Dict[str, Any]] = None,
-        target_kl: Optional[float] = None,
-        stats_window_size: int = 100,
-        tensorboard_log: Optional[str] = None,
-        policy_kwargs: Optional[Dict[str, Any]] = None,
-        verbose: int = 0,
-        seed: Optional[int] = None,
-        device: Union[th.device, str] = "auto",
-        _init_setup_model: bool = True,
+            self,
+            policy: Union[str, Type[ActorCriticPolicy]],
+            env: Union[GymEnv, str],
+            learning_rate: Union[float, Schedule] = 3e-4,
+            n_steps: int = 2048,
+            batch_size: int = 64,
+            n_epochs: int = 10,
+            gamma: float = 0.99,
+            gae_lambda: float = 0.95,
+            clip_range: Union[float, Schedule] = 0.2,
+            clip_range_vf: Union[None, float, Schedule] = None,
+            normalize_advantage: bool = True,
+            ent_coef: float = 0.0,
+            vf_coef: float = 0.5,
+            max_grad_norm: float = 0.5,
+            use_sde: bool = False,
+            sde_sample_freq: int = -1,
+            rollout_buffer_class: Optional[Type[RolloutBuffer]] = None,
+            rollout_buffer_kwargs: Optional[Dict[str, Any]] = None,
+            target_kl: Optional[float] = None,
+            stats_window_size: int = 100,
+            tensorboard_log: Optional[str] = None,
+            policy_kwargs: Optional[Dict[str, Any]] = None,
+            verbose: int = 0,
+            seed: Optional[int] = None,
+            device: Union[th.device, str] = "auto",
+            _init_setup_model: bool = True,
     ):
         super().__init__(
             policy,
@@ -770,7 +773,7 @@ class PPO(OnPolicyAlgorithm):
         # because of the advantage normalization
         if normalize_advantage:
             assert (
-                batch_size > 1
+                    batch_size > 1
             ), "`batch_size` must be greater than 1. See https://github.com/DLR-RM/stable-baselines3/issues/440"
 
         if self.env is not None:
@@ -857,7 +860,7 @@ class PPO(OnPolicyAlgorithm):
                 # Normalization does not make sense if mini batchsize == 1, see GH issue #325
                 if self.normalize_advantage and len(advantages) > 1:
                     advantages = (advantages - advantages.mean()) / (
-                        advantages.std() + 1e-8
+                            advantages.std() + 1e-8
                     )
 
                 # ratio between old and new policy, should be one at the first iteration
@@ -898,9 +901,9 @@ class PPO(OnPolicyAlgorithm):
                 entropy_losses.append(entropy_loss.item())
 
                 loss = (
-                    policy_loss
-                    + self.ent_coef * entropy_loss
-                    + self.vf_coef * value_loss
+                        policy_loss
+                        + self.ent_coef * entropy_loss
+                        + self.vf_coef * value_loss
                 )
 
                 # Calculate approximate form of reverse KL Divergence for early stopping
@@ -956,13 +959,13 @@ class PPO(OnPolicyAlgorithm):
             self.logger.record("train/clip_range_vf", clip_range_vf)
 
     def learn(
-        self: SelfPPO,
-        total_timesteps: int,
-        callback: MaybeCallback = None,
-        log_interval: int = 1,
-        tb_log_name: str = "PPO",
-        reset_num_timesteps: bool = True,
-        progress_bar: bool = False,
+            self: SelfPPO,
+            total_timesteps: int,
+            callback: MaybeCallback = None,
+            log_interval: int = 1,
+            tb_log_name: str = "PPO",
+            reset_num_timesteps: bool = True,
+            progress_bar: bool = False,
     ) -> SelfPPO:
         return super().learn(
             total_timesteps=total_timesteps,
@@ -982,15 +985,14 @@ class ppo(PPO):
         self.save_path = f"{root}/saved" if save_path is None else save_path
         self.policy_save_path = f"{self.save_path}/ppo_{self.comment}" if comment is not None else f"{self.save_path}/ppo"
 
-
     def learn(
-        self: SelfPPO,
-        total_timesteps: int,
-        callback: MaybeCallback = None,
-        log_interval: int = 1,
-        tb_log_name: str = "PPO",
-        reset_num_timesteps: bool = True,
-        progress_bar: bool = False,
+            self: SelfPPO,
+            total_timesteps: int,
+            callback: MaybeCallback = None,
+            log_interval: int = 1,
+            tb_log_name: str = "PPO",
+            reset_num_timesteps: bool = True,
+            progress_bar: bool = False,
     ) -> SelfPPO:
         # LI Fanxing
         tb_log_name = (
@@ -1048,7 +1050,7 @@ class ppo(PPO):
                 # Normalization does not make sense if mini batchsize == 1, see GH issue #325
                 if self.normalize_advantage and len(advantages) > 1:
                     advantages = (advantages - advantages.mean()) / (
-                        advantages.std() + 1e-8
+                            advantages.std() + 1e-8
                     )
 
                 # ratio between old and new policy, should be one at the first iteration
@@ -1089,9 +1091,9 @@ class ppo(PPO):
                 entropy_losses.append(entropy_loss.item())
 
                 loss = (
-                    policy_loss
-                    + self.ent_coef * entropy_loss
-                    + self.vf_coef * value_loss
+                        policy_loss
+                        + self.ent_coef * entropy_loss
+                        + self.vf_coef * value_loss
                 )
 
                 # Calculate approximate form of reverse KL Divergence for early stopping
@@ -1166,7 +1168,7 @@ class ppo(PPO):
 
         if self.clip_range_vf is not None:
             self.logger.record("train/clip_range_vf", clip_range_vf)
-            
+
     @staticmethod
     def _wrap_env(env: GymEnv, verbose: int = 0, monitor_wrapper: bool = True) -> VecEnv:
         """ "
@@ -1202,7 +1204,7 @@ class ppo(PPO):
                 # the other channel last), VecTransposeImage will throw an error
                 for space in env.observation_space.spaces.values():
                     wrap_with_vectranspose = wrap_with_vectranspose or (
-                        is_image_space(space) and not is_image_space_channels_first(space)  # type: ignore[arg-type]
+                            is_image_space(space) and not is_image_space_channels_first(space)  # type: ignore[arg-type]
                     )
             else:
                 wrap_with_vectranspose = is_image_space(env.observation_space) and not is_image_space_channels_first(
@@ -1215,4 +1217,3 @@ class ppo(PPO):
                 env = VecTransposeImage(env)
 
         return env
-

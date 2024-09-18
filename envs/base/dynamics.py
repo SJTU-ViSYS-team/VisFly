@@ -6,10 +6,10 @@ import os, io, sys
 import json
 
 sys.path.append(os.getcwd())
-from ..utils.maths import Quaternion, Integrator, cross
-from ..utils.type import *
+from ...utils.maths import Quaternion, Integrator, cross
+from ...utils.type import *
 import torch.nn as nn
-from ..utils.type import ACTION_TYPE
+from ...utils.type import ACTION_TYPE
 
 g = th.tensor([[0, 0, -9.81]]).T
 z = th.tensor([[0, 0, 1]]).T
@@ -31,7 +31,6 @@ class Dynamics:
             dt: float = 0.0025,
             ctrl_dt: float = 0.02,
             action_space: Tuple[float, float] = (-1, 1),
-            requires_grad: bool = False,
             device: th.device = th.device("cpu"),
             integrator: str = "euler",
     ):
@@ -53,7 +52,6 @@ class Dynamics:
         # command format: [yaw, vx, vy, vz]
 
         # const parameters
-        self.requires_grad = requires_grad
         self.action_type = self.action_type_alias[action_type]
 
         self._is_quat_output = ori_output_type == "quaternion"
@@ -71,7 +69,7 @@ class Dynamics:
         self._set_device(device)
 
     def _init(self):
-        self.load(os.path.dirname(__file__)+"/../configs/example.json")
+        self.load(os.path.dirname(__file__)+"/../../configs/example.json")
         t_BM_ = (
                 self._arm_length
                 * th.tensor(0.5).sqrt()
@@ -122,6 +120,8 @@ class Dynamics:
             ori: Union[List, th.Tensor, None] = None,
             vel: Union[List, th.Tensor, None] = None,
             ori_vel: Union[List, th.Tensor, None] = None,
+            motor_omega: Union[List, th.Tensor, None] = None,
+            thrusts: Union[List, th.Tensor, None] = None,
             indices: Optional[List] = None,
     ):
         if indices is None:
@@ -129,16 +129,16 @@ class Dynamics:
             self._orientation = Quaternion(num=self.num, device=self.device) if ori is None else Quaternion(*ori.T)
             self._velocity = th.zeros((3, self.num), device=self.device) if vel is None else vel.T
             self._angular_velocity = th.zeros((3, self.num), device=self.device) if ori_vel is None else ori_vel.T
-            self._motor_omega = th.ones((4, self.num), device=self.device) * self._bd_rotor_omega.min
-            self._thrusts = th.ones((4, self.num), device=self.device) * self._bd_thrust.min
+            self._motor_omega = th.ones((4, self.num), device=self.device) * self._bd_rotor_omega.min if motor_omega is None else motor_omega.T
+            self._thrusts = th.ones((4, self.num), device=self.device) * self._bd_thrust.min if thrusts is None else thrusts.T
             self._t = th.zeros((self.num,), device=self.device)
         else:
             self._position[:, indices] = th.zeros((3, len(indices)), device=self.device) if pos is None else pos.T
             self._orientation[indices] = Quaternion(num=len(indices), device=self.device) if ori is None else Quaternion(*ori.T)
             self._velocity[:, indices] = th.zeros((3, len(indices)), device=self.device) if vel is None else vel.T
             self._angular_velocity[:, indices] = th.zeros((3, len(indices)), device=self.device) if ori_vel is None else ori_vel.T
-            self._motor_omega[:, indices] = th.ones((4, len(indices)), device=self.device) * self._bd_rotor_omega.min
-            self._thrusts[:, indices] = th.ones((4, len(indices)), device=self.device) * self._bd_thrust.min
+            self._motor_omega[:, indices] = th.ones((4, len(indices)), device=self.device) * self._bd_rotor_omega.min if motor_omega is None else motor_omega.T
+            self._thrusts[:, indices] = th.ones((4, len(indices)), device=self.device) * self._bd_thrust.min if thrusts is None else thrusts.T
             self._t[indices] = th.zeros((len(indices),), device=self.device)
         return self.state
 
@@ -526,6 +526,10 @@ class Dynamics:
         return self._t
 
     @property
+    def motor_omega(self):
+        return self._motor_omega.T
+
+    @property
     def thrusts(self):
         return self._thrusts.T
 
@@ -543,94 +547,14 @@ class Dynamics:
     def is_quat_output(self):
         return self._is_quat_output
 
-
-def data_debug():
-    d = Dynamics(
-        action_type="thrust",
-        dt=0.0025,
-        num=2,
-        ori_output_type="euler"
-    )
-
-    from scipy.spatial.transform import Rotation as R
-
-    d.reset()
-    steps = 250
-
-    poss, oris, vels, ori_vels = [], [], [], []
-    for _ in range(steps):
-        act = th.tensor([[0.5, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]])
-        # act[0, [0, 2, 3]] = 0.49
-        act[1, [1, 2, 3]] = 0.45
-        # act = th.rand(1,4) 
-        d.step(act.numpy())
-
-        # print("ori_vel", ori_vel, "ori_vel_ref", ori_vel_ref)
-        poss.append(d.position.clone().detach())
-        oris.append(d.orientation.clone().detach())
-        vels.append(d.velocity.clone())
-        ori_vels.append(d.angular_velocity.clone())
-
-    import matplotlib.pyplot as plt
-
-    poss = th.stack(poss).detach().numpy()
-    oris = th.stack(oris).detach().numpy()
-    vels = th.stack(vels).detach().numpy()
-    ori_vels = th.stack(ori_vels).detach().numpy()
-
-    t = np.linspace(0, 0.01 * steps, steps)
-    for fig_id in range(2):
-        plt.figure(fig_id)
-        plt.subplot(221)
-        plt.plot(t, poss[:, fig_id, :], "--")
-        plt.title("_position")
-        plt.legend(["x", "y", "z", "x_ref", "y_ref", "z_ref"])
-        plt.subplot(222)
-        plt.plot(t, oris[:, fig_id, :], "--")
-        plt.title("_orientation")
-        plt.legend(["roll", "pitch", "yaw", "roll_ref", "pitch_ref", "yaw_ref"])
-        plt.subplot(223)
-        plt.plot(t, vels[:, fig_id, :], "--")
-        plt.title("_velocity")
-        plt.legend(["x", "y", "z"])
-        plt.subplot(224)
-        plt.plot(t, ori_vels[:, fig_id, :], "--")
-        plt.title("angular _velocity")
-        plt.legend(["x", "y", "z"])
-    plt.show()
-
-    test = 1
-
-
-def inner():
-    import time
-    num = 1000
-    # set default device as cuda
-    device = th.device("cpu")
-    print(device)
-    d = Dynamics(
-        action_type="thrust",
-        dt=0.0025,
-        num=num,
-        device=device
-    )
-    d.reset()
-    act = th.ones((num, 4), device=device) * 0.5
-    steps = 1000
-    start = time.time()
-    for _ in range(steps):
-        state = d.step(act)
-    print(f"fps:{num * steps / (time.time() - start)}")
-    print("time:", time.time() - start)
-    print("-----------------------------\n cpu")
-
-
-def fps_test():
-    import cProfile, pstats
-    cProfile.run("inner()", "restats")
-    p = pstats.Stats("restats")
-    # p.sort_stats("time").print_stats()
-
-
-if __name__ == "__main__":
-    fps_test()
+    @property
+    def full_state(self):
+        return th.hstack([
+            self.position,
+            self.orientation,
+            self.velocity,
+            self.angular_velocity,
+            self.motor_omega,
+            self.thrusts
+        ]
+        )
