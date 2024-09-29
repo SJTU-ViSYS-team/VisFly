@@ -46,12 +46,20 @@ This demonstration dataset is created based on [Replica](https://github.com/face
 Here you need to register a hugging face acount and export your [access token](https://huggingface.co/blog/password-git-deprecation). 
 ```bash
 cd datasets
-git clone https://YourUsername:YourAccessToken@huggingface.co/datasets/LiFanxing/VisFly.git
-mv VisFly/spy_datasets spy_datasets # move spy_datasets out of VisFly folder
+git clone https://YourUsername:YourAccessToken@huggingface.co/datasets/LiFanxing/VisFly-datasets.git
+mv VisFly-datasets/spy_datasets spy_datasets # move spy_datasets out of VisFly-datasets folder, it should be root/VisFly/datasets/spy_datasets
 ```
 
 ## Run an Example
 This is a simple example to show how to train an agent to fly in cluttered environment.
+Create another root folder named "My_Project_Using_VisFly", move VisFly into `My_Project_Using_VisFly/`, and move the examples out of VisFly repository.
+```bash
+mkdir My_Project_Using_VisFly
+mv VisFly My_Project_Using_VisFly/
+mv My_Project_Using_VisFly/VisFly/examples My_Project_Using_VisFly/
+cd My_Project_Using_VisFly
+```
+Then you can run the following command to train the agent.
 ```bash
 # Assume you are in the root of the project
 python examples/cluttered_flight/rl.py -t 1
@@ -62,8 +70,8 @@ And you can use the following command to test the model.
 python examples/cluttered_flight/rl.py -t 0 -w ppo_1
 ```
 Then you can find the result in the `examples/cluttered_flight/saved/test/` folder as the types of both figures and video.
-The figures could be customized via `render_settings (line 121)` in the `examples/cluttered_flight/test.py`. 
-The perspective and position of rendering camera in video could be set in `examples/cluttered_flight/rl.py`. 
+The figures could be customized by overriding `draw()` in the `examples/cluttered_flight/test.py`. 
+The perspective and position of rendering camera in video could be set via `render_settings (line 129)` in `examples/cluttered_flight/rl.py`. 
 
 # Citation
 If this simulator or any part of this simulator could be helpful, I appreciate it very much when  you maybe cite this one:

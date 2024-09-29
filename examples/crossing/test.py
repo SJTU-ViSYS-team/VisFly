@@ -1,10 +1,10 @@
 import numpy as np
 
-from utils.evaluate import TestBase
+from VisFly.utils.evaluate import TestBase
 import os, sys
 from typing import Optional
 from matplotlib import pyplot as plt
-from utils.FigFashion.FigFashion import FigFon
+from VisFly.utils.FigFashion.FigFashion import FigFon
 class Test(TestBase):
     def __init__(self,
                 model,

@@ -25,7 +25,7 @@ training_params["n_steps"] = training_params["max_episode_steps"]
 training_params["batch_size"] = training_params["num_env"] * training_params["n_steps"]
 save_folder = os.path.dirname(os.path.abspath(sys.argv[0])) + "/saved/"
 training_params["learning_rate"] = 1e-4
-scene_path = "datasets/spy_datasets/configs/garage_landing"
+scene_path = "VisFly/datasets/spy_datasets/configs/garage_landing"
 
 random_kwargs = {
     "state_generator":
