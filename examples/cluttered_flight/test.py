@@ -1,11 +1,9 @@
 import numpy as np
-
 from VisFly.utils.evaluate import TestBase
 import os, sys
 from typing import Optional
 from matplotlib import pyplot as plt
 from VisFly.utils.FigFashion.FigFashion import FigFon
-
 
 class Test(TestBase):
     def __init__(self,
@@ -18,7 +16,16 @@ class Test(TestBase):
     def draw(self, names=None):
         state_data = [obs["state"] for obs in self.obs_all]
         state_data = np.array(state_data)
-        t = np.array(self.t)[:, 0]
+        print("Shape of state_data:", state_data.shape)  # Debugging line
+
+        t = np.array(self.t)
+        print("Shape of self.t:", t.shape)  # Debugging line
+
+        if t.ndim == 1:
+            t = t  # No need to index if it's already 1D
+        else:
+            t = t[:, 0]  # If it's 2D, take the first column
+
         for i in range(self.model.env.num_envs):
             fig = plt.figure(figsize=(5, 4))
             plt.subplot(2, 2, 1)
@@ -35,6 +42,7 @@ class Test(TestBase):
             plt.legend()
             plt.tight_layout()
             plt.show()
+
         col_dis = np.array([collision["col_dis"] for collision in self.collision_all])
         fig2, axes = FigFon.get_figure_axes(SubFigSize=(1, 1))
         axes.plot(t, col_dis)
