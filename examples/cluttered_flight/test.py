@@ -19,7 +19,6 @@ class Test(TestBase):
         print("Shape of state_data:", state_data.shape)  # Debugging line
 
         t = np.array(self.t)
-        print("Shape of self.t:", t.shape)  # Debugging line
 
         if t.ndim == 1:
             t = t  # No need to index if it's already 1D
