@@ -1,11 +1,13 @@
 import numpy as np
-from envs.droneGymEnv import DroneGymEnvsBase
+from .base.droneGymEnv import DroneGymEnvsBase
 from typing import Union, Tuple, List, Optional, Dict
 import torch as th
 from habitat_sim import SensorType
 from gymnasium import spaces
 from scipy.ndimage import center_of_mass
 import matplotlib.pyplot as plt
+
+from ..utils.type import TensorDict
 
 
 class LandingEnv(DroneGymEnvsBase):
@@ -22,7 +24,8 @@ class LandingEnv(DroneGymEnvsBase):
             sensor_kwargs: list = [],
             device: str = "cpu",
             target: Optional[th.Tensor] = None,
-            max_episode_steps: int = 128
+            max_episode_steps: int = 128,
+            is_eval: bool = False,
     ):
         sensor_kwargs = [{
             "sensor_type": SensorType.COLOR,
@@ -30,7 +33,22 @@ class LandingEnv(DroneGymEnvsBase):
             "resolution": [64, 64],
             "orientation": [-np.pi / 2, 0, 0]
         }]
+        random_kwargs = {
+            "state_generator":
+                {
+                    "class": "Uniform",
+                    "kwargs": [
+                        {"position": {"mean": [2., 0., 2.5], "half": [1.0, 1.0, 1.0]}},
+                    ]
+                }
+        }
 
+        dynamics_kwargs = {
+            "dt": 0.02,
+            "ctrl_dt": 0.02,
+            "action_type": "thrust",
+            "ctrl_delay": False,
+        }
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
             num_scene=num_scene,
@@ -50,15 +68,7 @@ class LandingEnv(DroneGymEnvsBase):
         self.observation_space["target"] = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
         self.centers = None
 
-    def reset_by_id(self, indices):
-        obs = super().reset_by_id(indices)
-        return obs
-
-    def reset(self):
-        obs = super().reset()
-        return obs
-
-    def get_done(self):
+    def get_failure(self):
         out_of_vision = th.as_tensor(self.centers).isnan().any(dim=1)
         return out_of_vision
 
@@ -80,64 +90,121 @@ class LandingEnv(DroneGymEnvsBase):
         # cv.imshow("2 value", np.full_like(two_value[0], 255, dtype=np.uint8) * two_value[0])
         # cv.imshow("color", self.sensor_obs["color"][0])
         # cv.waitKey(0)
-        if not self.requires_grad:
-            return {
-                "state": self.state.cpu().clone().numpy(),
-                "color": self.sensor_obs["color"],
-                "target": self.centers,
-            }
+        return TensorDict({
+            "state": self.state,
+            "color": self.sensor_obs["color"],
+            "target": self.centers,
+        })
 
-        else:
-            return {
-                "state": self.state.to(self.device),
-                "color": th.from_numpy(np.stack([np.expand_dims(agent["depth"], 0) for agent in self.sensor_obs])).to(self.device),
-            }
 
     def get_success(self) -> th.Tensor:
-        landing_half = 0.25
+        landing_half = 0.3
         # return th.full((self.num_envs,), False)
-        return (self.position[:, 2] <= 0.15) \
-            & ((self.position[:, :2] < (self.target[:2] + landing_half)).all(dim=1) & (self.position[:, :2] > (self.target[:2] - landing_half)).all(dim=1))
-        # & (self.velocity.norm(dim=1) <= 0.1)) #
+        return (self.position[:, 2] <= 0.2) \
+            & (self.position[:, :2] < (self.target[:,:2] + landing_half)).all(dim=1)\
+               & (self.position[:, :2] > (self.target[:,:2] - landing_half)).all(dim=1) \
+               & (self.velocity.norm(dim=1) <= 0.3)  #
         # & \
         # ((self.position[:, :2] < self.target[:2] + landing_half).all(dim=1) & (self.position[:, :2] > self.target[:2] - landing_half).all(dim=1))
 
-        # & (self.velocity.norm(dim=1) <= 0.1) \
+
+def get_reward(self) -> th.Tensor:
+    # precise and stable target flight
+    base_r = 0.1
+    """reward function"""
+    reward = 0.2 * (1.25 - self.centers.norm(dim=1) / 1).clamp_max(1.) + \
+             (self.orientation[:, [0, 1]]).norm(dim=1) * -0.2 + \
+             0.1 * (3 - self.position[:, 2]).clamp(0, 3) / 3 * 2 + \
+             -0.02 * self.velocity.norm(dim=1) + \
+             -0.01 * self.angular_velocity.norm(dim=1) + \
+             0.1 * 20 * self._success * (10 + (self.max_episode_steps - self._step_count)) / (1 + 2 * self.velocity.norm(dim=1))  # / (self.velocity.norm(dim=1) + 1)
+
+    return reward
+
+
+class LandingEnv2(LandingEnv):
+    def __init__(
+            self,
+            num_agent_per_scene: int = 1,
+            num_scene: int = 1,
+            seed: int = 42,
+            visual: bool = True,
+            requires_grad: bool = False,
+            random_kwargs: dict = {},
+            dynamics_kwargs: dict = {},
+            scene_kwargs: dict = {},
+            sensor_kwargs: list = [],
+            device: str = "cpu",
+            target: Optional[th.Tensor] = None,
+            max_episode_steps: int = 128,
+            is_eval: bool = False,
+    ):
+        super().__init__(
+            num_agent_per_scene=num_agent_per_scene,
+            num_scene=num_scene,
+            seed=seed,
+            visual=visual,
+            requires_grad=requires_grad,
+            random_kwargs=random_kwargs,
+            dynamics_kwargs=dynamics_kwargs,
+            scene_kwargs=scene_kwargs,
+            sensor_kwargs=sensor_kwargs,
+            device=device,
+            target=target,
+            max_episode_steps=max_episode_steps,
+            is_eval=is_eval
+        )
+        self.target = th.ones((self.num_envs, 1)) @ th.as_tensor([2., 0., 2.5] if target is None else target).reshape(1, -1)
+        if is_eval:
+            self.target = th.as_tensor([[2., 1., 2.5],[2., 0., 2.5],[2., -1., 2.5]])
+        self.observation_space = spaces.Dict({
+            "state": spaces.Box(low=-np.inf, high=np.inf, shape=(13,), dtype=np.float32),
+        })
+
+    def get_failure(self) -> th.Tensor:
+        return self.is_collision
 
     def get_reward(self) -> th.Tensor:
-        # precise and stable target flight
-        base_r = 0.1
-        """reward function"""
-        # 0.1 * (1 - self.centers.norm(dim=1) / 0.707)
-        # reward = 0.1 * (3 - (self.position[:,:2]-self.target[:2]).norm(dim=1)).relu() / 3 + \
-        #          (self.orientation - th.tensor([1, 0, 0, 0])).norm(dim=1) * -0.0001 + \
-        #          0.1 * (3- self.position[:, 2]).relu() / 3 + \
-        #          -0.01 * self.velocity.norm(dim=1) + \
-        #          (self.angular_velocity - 0).norm(dim=1) * -0.002 # + \
-        # self._success * (self.max_episode_steps - self._step_count) * base_r * 1.8 / (self.velocity.norm(dim=1) + 1)
-        # + \
-        # self._success * (1 - self.centers.norm(dim=1) / 0.707) * base_r * 4 + \
-        # self._success * (self.max_episode_steps - self._step_count) * base_r * 4 / (self.velocity.norm(dim=1) + 1)  # + \
+        eta = th.as_tensor(1.2)
+        v_l = 1 * (self.position[:, 2] - 0).clip(min=0.05, max=1).clone().detach()
+        r_p = -0.1
+        descent_v = -self.velocity[:, 2] - 0
+        # r_z_punish = ((descent_v > v_l) | (descent_v < 0))
+        # r_z = r_z_punish * r_p + \
+        #       ~r_z_punish * (eta.pow(descent_v / v_l) - 1) / (eta-1) * 0.1
 
-        # self._success * (self.max_episode_steps - self._step_count) * (1 - self.centers.norm(dim=1) / 0.707) * base_r * 8
+        r_z_first = descent_v <= v_l
+        r_z = ~r_z_first * (eta.pow(-4 * descent_v / v_l + 5) - 1) / (eta - 1) * 0.1 + \
+              r_z_first * (eta.pow(descent_v / v_l) - 1) / (eta - 1) * 0.1
 
-        # 0.02 * (- self.velocity[:, 2]) + \
-        # ((self.position[:, 2] <= 0.15) & (self.velocity.norm(dim=1) <= 0.1)) * (self.max_episode_steps - self._step_count) * base_r * 4 + \
+        rho = th.as_tensor(1.2)
+        d_s = 2. * (self.position[:, 2] - 0).clip(min=0.05, max=1).clone().detach()
+        d_xy = (self.target - self.position)[:, :2].norm(dim=1) - 0
+        r_xy_punish = d_xy > d_s
+        r_xy = (rho.pow(1 - d_xy / d_s) - 1) / (rho - 1) * 0.1
 
-        reward = 0.2 * (1.25 - self.centers.norm(dim=1) / 1).clamp_max(1.) + \
-                 (self.orientation[:, [0, 1]]).norm(dim=1) * -0.2 + \
-                 0.1 * (3 - self.position[:, 2]).clamp(0, 3) / 3 * 2 + \
-                 -0.02 * self.velocity.norm(dim=1) + \
-                 -0.01 * self.angular_velocity.norm(dim=1) + \
-                 0.1 * 20 * self._success * (10 + (self.max_episode_steps - self._step_count)) / (1+2*self.velocity.norm(dim=1)) # / (self.velocity.norm(dim=1) + 1)
+        # toward_v = ((self.velocity[:, :2] -0)* ((self.target - self.position)[:, :2])).sum(dim=1) / d_xy
+        # r_xy_is_first_sec = toward_v <= v_l
+        # r_xy = r_xy_is_first_sec * 0.1 * (rho.pow(toward_v/v_l)-1)/(rho-1)+ \
+        #     ~r_xy_is_first_sec * 0.1*(rho.pow(-4 * descent_v / v_l + 5) - 1) / (rho-1) * 0.1
 
-        # succeed
-        # reward = 0.1 * (3 - (self.position-self.target).norm(dim=1)).relu() / 3 + \
-        #          (self.orientation - th.tensor([1, 0, 0, 0])).norm(dim=1) * -0.0001 + \
-        #          -0.002 * self.velocity.norm(dim=1) + \
-        #          -0.002 * self.angular_velocity.norm(dim=1) + \
-        #          0.1 * 2 * self._success * (self.max_episode_steps - self._step_count)
+        r_s = 20.
+        r_l = self.success * r_s + self.failure * -0.1
+        reward = 1. * r_l + 1. * r_xy + 1. * r_z
 
         return reward
 
-# self.is_collision * -0.5 +
+    def get_observation(
+            self,
+            indices=None
+    ) -> Dict:
+        state = th.hstack([
+            (self.target - self.position) / self.max_sense_radius,
+            self.orientation,
+            self.velocity / 10,
+            self.angular_velocity / 10,
+        ]).to(self.device)
+
+        return TensorDict({
+            "state": state,
+            })

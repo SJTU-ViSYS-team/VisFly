@@ -21,12 +21,14 @@ from .extractors import create_mlp, create_cnn
 from torch.distributions import Normal
 from stable_baselines3.common.distributions import SquashedDiagGaussianDistribution, StateDependentNoiseDistribution, DiagGaussianDistribution
 
+from stable_baselines3.sac.policies import Actor as SAC_Actor
+from stable_baselines3.sac.policies import SACPolicy
+from stable_baselines3.common.policies import obs_as_tensor
+from .extractors import *
+
 # CAP the standard deviation of the actor
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
-
-from stable_baselines3.sac.policies import Actor as SAC_Actor
-from stable_baselines3.sac.policies import SACPolicy
 
 
 class ContinuousCritic(NormalContinuousCritic):
@@ -58,6 +60,8 @@ class ContinuousCritic(NormalContinuousCritic):
     def forward(self, obs: th.Tensor, actions: th.Tensor) -> Tuple[th.Tensor, ...]:
         # Learn the features extractor using the policy loss only
         # when the features_extractor is shared with the actor
+        obs = obs_as_tensor(obs, device=self.device)
+        actions = th.as_tensor(actions, device=self.device)
         with th.set_grad_enabled(not self.share_features_extractor):
             if self.features_extractor.is_recurrent:
                 features, h = self.extract_features(obs, self.features_extractor)
@@ -156,7 +160,7 @@ class Actor(SAC_Actor):
         :return:
             Mean, standard deviation and optional keyword arguments.
         """
-        # obs = obs.as_tensor(device=self.device)
+        obs = obs_as_tensor(obs, device=self.device)
         if self.features_extractor.is_recurrent:
             features, h = self.extract_features(obs, self.features_extractor)
         else:
@@ -180,6 +184,22 @@ class Actor(SAC_Actor):
 
 
 class MTDPolicy(SACPolicy):
+    features_extractor_alias = {
+        "flatten": FlattenExtractor,
+        "combined": CombinedExtractor,
+        "cnn": NatureCNN,
+        "StateExtractor": StateExtractor,
+        "StateTargetExtractor": StateTargetExtractor,
+        "StateImageExtractor": StateImageExtractor,
+        "StateTargetImageExtractor": StateTargetImageExtractor,
+        "StateGateExtractor": StateGateExtractor,
+    }
+    activation_fn_alias = {
+        "relu": nn.ReLU,
+        "tanh": nn.Tanh,
+        "elu": nn.ELU,
+    }
+
     def __init__(
             self,
             observation_space: spaces.Space,
@@ -202,7 +222,12 @@ class MTDPolicy(SACPolicy):
             squash_output=True,
     ):
         self.deterministic = deterministic
-        self._squash_output = squash_output
+        self.__squash_output = squash_output
+        if isinstance(features_extractor_class, str):
+            features_extractor_class = self.features_extractor_alias[features_extractor_class]
+
+        if isinstance(activation_fn, str):
+            activation_fn = self.activation_fn_alias[activation_fn]
 
         super().__init__(
             observation_space=observation_space,
@@ -223,10 +248,13 @@ class MTDPolicy(SACPolicy):
             share_features_extractor=share_features_extractor,
         )
 
+    def _build(self, lr_schedule: Schedule) -> None:
+        super()._build(lr_schedule)
+
     def make_actor(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> Actor:
         actor_kwargs = self._update_features_extractor(self.actor_kwargs, features_extractor)
         actor_kwargs["deterministic"] = self.deterministic
-        actor_kwargs["squash_output"] = self.squash_output
+        actor_kwargs["squash_output"] = self.__squash_output
 
         return Actor(**actor_kwargs).to(self.device)
 
@@ -254,7 +282,8 @@ class MTDPolicy(SACPolicy):
                 "and documentation for more information: https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html#vecenv-api-vs-gym-api"
             )
 
-        obs_tensor, vectorized_env = self.obs_to_tensor(observation)
+        obs_tensor = obs_as_tensor(observation, device=self.device)
+        # obs_tensor = observation if
 
         with th.no_grad():
             actions, h = self._predict(obs_tensor, deterministic=deterministic)

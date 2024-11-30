@@ -533,6 +533,40 @@ class SwarmStateTargetImageExtractor(BaseFeaturesExtractor):
         # 合并state,target特征和image特征
         return th.cat(features, dim=1)
 
+
+class StateGateExtractor(StateExtractor):
+    def __init__(self, observation_space: spaces.Dict,
+                 net_arch: Optional[Dict] = {},
+                 activation_fn: Type[nn.Module] = nn.ReLU, ):
+        super(StateGateExtractor, self).__init__(observation_space=observation_space, net_arch=net_arch, activation_fn=activation_fn)
+
+    def _build(self, observation_space, net_arch, activation_fn):
+        super()._build(observation_space, net_arch, activation_fn)
+        gate_feature_dim = set_mlp_feature_extractor(self, "gate", observation_space["gate"], net_arch["gate"], activation_fn)
+        self._features_dim = self._features_dim + gate_feature_dim
+
+    def extract(self, observations) -> th.Tensor:
+        state_features = self.state_extractor(observations['state'])
+        gate_features = self.gate_extractor(observations['gate'])
+        return th.cat([state_features, gate_features], dim=1)
+
+# class StateIndexExtractor(StateExtractor):
+#     def __init__(self, observation_space: spaces.Dict,
+#                  net_arch: Optional[Dict] = {},
+#                  activation_fn: Type[nn.Module] = nn.ReLU, ):
+#         super(StateGateExtractor, self).__init__(observation_space=observation_space, net_arch=net_arch, activation_fn=activation_fn)
+#
+#     def _build(self, observation_space, net_arch, activation_fn):
+#         super()._build(observation_space, net_arch, activation_fn)
+#         gate_feature_dim = set_mlp_feature_extractor(self, "gate", observation_space["gate"], net_arch["gate"], activation_fn)
+#         self._features_dim = self._features_dim + gate_feature_dim
+#
+#     def extract(self, observations) -> th.Tensor:
+#         state_features = self.state_extractor(observations['state'])
+#         gate_features = self.gate_extractor(observations['gate'])
+#         return th.cat([state_features, gate_features], dim=1)
+
+
 # class SwarmStateTargetImageExtractor(StateTargetImageExtractor):
 #     backbone_alias: Dict = {
 #         "resnet18": models.resnet18,

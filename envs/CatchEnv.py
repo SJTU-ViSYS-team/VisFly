@@ -80,8 +80,10 @@ class CatchEnv(DroneGymEnvsBase):
             sensor_kwargs=sensor_kwargs,
             latent_dim=latent_dim,
         )
-
-        self.balls = ball(num_agents=num_scene*num_agent_per_scene)
+        scene_kwargs["object_kwargs"] = {
+            "object_setting_path": "VisFly/datasets/spy_datasets/configs/free_falling_objects.json",
+            "isolated": True,
+        }
 
     def get_observation(
             self,

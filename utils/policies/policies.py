@@ -13,7 +13,7 @@ from stable_baselines3.common.type_aliases import Schedule, PyTorchObs
 from torchvision import models
 from .extractors import create_mlp
 from stable_baselines3.common.policies import MlpExtractor
-
+from stable_baselines3.common.distributions import *
 
 class MlpExtractor2(MlpExtractor):
     def __init__(
@@ -49,7 +49,22 @@ class MlpExtractor2(MlpExtractor):
         )
 
 
+from .extractors import *
+
+
 class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
+    features_extractor_alias = {
+        "StateExtractor": StateExtractor,
+        "StateTargetExtractor": StateTargetExtractor,
+        "StateImageExtractor": StateImageExtractor,
+        "StateTargetImageExtractor": StateTargetImageExtractor,
+        "StateGateExtractor": StateGateExtractor,
+    }
+    activation_fn_alias = {
+        "relu": nn.ReLU,
+        "tanh": nn.Tanh,
+        "elu": nn.ELU,
+    }
     recurrent_alias: Dict = {"GRU": th.nn.GRU}
     """
      MultiInputActorClass policy class for actor-critic algorithms (has both policy and value prediction).
@@ -94,7 +109,7 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
             log_std_init: float = 0.0,
             full_std: bool = True,
             use_expln: bool = False,
-            squash_output: bool = False,
+            squash_output: bool = True,
             features_extractor_class: Type[BaseFeaturesExtractor] = None,
             features_extractor_kwargs: Optional[Dict[str, Any]] = None,
             pi_features_extractor_class: Type[BaseFeaturesExtractor] = None,
@@ -106,6 +121,12 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
             optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
             optimizer_kwargs: Optional[Dict[str, Any]] = None,
     ):
+        if isinstance(features_extractor_class, str):
+            features_extractor_class = self.features_extractor_alias[features_extractor_class]
+
+        if isinstance(activation_fn, str):
+            activation_fn = self.activation_fn_alias[activation_fn]
+
         if features_extractor_class is None:
             assert pi_features_extractor_class is not None and vf_features_extractor_class is not None
             features_extractor_class = pi_features_extractor_class
@@ -115,23 +136,23 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
             assert pi_features_extractor_class is None and vf_features_extractor_class is None
 
         super().__init__(
-            observation_space,
-            action_space,
-            lr_schedule,
-            net_arch,
-            activation_fn,
-            ortho_init,
-            use_sde,
-            log_std_init,
-            full_std,
-            use_expln,
-            squash_output,
-            features_extractor_class,
-            features_extractor_kwargs,
-            share_features_extractor,
-            normalize_images,
-            optimizer_class,
-            optimizer_kwargs,
+            observation_space=observation_space,
+            action_space=action_space,
+            lr_schedule=lr_schedule,
+            net_arch=net_arch,
+            activation_fn=activation_fn,
+            ortho_init=ortho_init,
+            use_sde=use_sde,
+            log_std_init=log_std_init,
+            full_std=full_std,
+            use_expln=use_expln,
+            squash_output=False,
+            features_extractor_class=features_extractor_class,
+            features_extractor_kwargs=features_extractor_kwargs,
+            share_features_extractor=share_features_extractor,
+            normalize_images=normalize_images,
+            optimizer_class=optimizer_class,
+            optimizer_kwargs=optimizer_kwargs,
         )
 
         if hasattr(self.features_extractor, "recurrent_extractor"):
@@ -151,7 +172,11 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
         else:
             raise ValueError("Invalid combination of features_extractor_class, pi_features_extractor_class and vf_features_extractor_class")
 
+        self._squash_output = squash_output
         self._build(lr_schedule)
+        if isinstance(self.action_dist, DiagGaussianDistribution):
+            if self.squash_output:
+                self.action_dist = SquashedDiagGaussianDistribution(get_action_dim(self.action_space))
 
     def _build_mlp_extractor(self) -> None:
         if not hasattr(self, "pi_features_dim") and not hasattr(self, "vf_features_dim"):
@@ -252,11 +277,18 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
         :param obs:
         :return: the action distribution.
         """
+        features = super().extract_features(obs)
         if hasattr(self.features_extractor, "recurrent_extractor"):
-            features = super().extract_features(obs, self.vf_features_extractor)[0]
+            features, _ = features
         else:
-            features = super().extract_features(obs, self.vf_features_extractor)
-        latent_pi = self.mlp_extractor.forward_actor(features)
+            features = features
+
+        if self.share_features_extractor:
+            pi_features = features
+        else:
+            pi_features, vf_features = features
+
+        latent_pi = self.mlp_extractor.forward_actor(pi_features)
         return self._get_action_dist_from_latent(latent_pi)
 
     def predict_values(self, obs: PyTorchObs) -> th.Tensor:
@@ -273,6 +305,32 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
         latent_vf = self.mlp_extractor.forward_critic(features)
         return self.value_net(latent_vf)
 
+    def _get_action_dist_from_latent(self, latent_pi: th.Tensor) -> Distribution:
+        """
+        Retrieve action distribution given the latent codes.
+
+        :param latent_pi: Latent code for the actor
+        :return: Action distribution
+        """
+        mean_actions = self.action_net(latent_pi)
+
+        if isinstance(self.action_dist, DiagGaussianDistribution):
+            return self.action_dist.proba_distribution(mean_actions, self.log_std)
+        elif isinstance(self.action_dist, SquashedDiagGaussianDistribution):
+            return self.action_dist.proba_distribution(mean_actions, self.log_std)
+        elif isinstance(self.action_dist, CategoricalDistribution):
+            # Here mean_actions are the logits before the softmax
+            return self.action_dist.proba_distribution(action_logits=mean_actions)
+        elif isinstance(self.action_dist, MultiCategoricalDistribution):
+            # Here mean_actions are the flattened logits
+            return self.action_dist.proba_distribution(action_logits=mean_actions)
+        elif isinstance(self.action_dist, BernoulliDistribution):
+            # Here mean_actions are the logits (before rounding to get the binary actions)
+            return self.action_dist.proba_distribution(action_logits=mean_actions)
+        elif isinstance(self.action_dist, StateDependentNoiseDistribution):
+            return self.action_dist.proba_distribution(mean_actions, self.log_std, latent_pi)
+        else:
+            raise ValueError("Invalid action distribution")
 
 def debug():
     test = 1

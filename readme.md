@@ -10,7 +10,9 @@ We hope you can find anything you want to customize your own environment with mi
 
 This simulator contains differentiable dynamics modelling, 
 which is considered as a promising research direction in the future. 
-We have reserved the interface and will release it in our following research.
+~~We have reserved the interface and will release it in our following research.~~ 
+Now we have release one hovering task instance in `/example` trained via Back-propagation-through-time (**BPTT**) using differentiable simulation (analytical gradient). 
+More tasks involves **BPTT** could be found in this repository, which is one of our following research [Amended BPTT](https://github.com/Fanxing-LI/ABPT).
 
 We will keep updating this project for more usages.
 
@@ -166,7 +168,7 @@ env = NavigationEnv(
             # }
         },
         "state_generator": {
-            "class": "Uniform",  # assert in ["Uniform", "Normal"]
+            "class": "Uniform",  # assert in ["Uniform", "Normal", "Union"]
             # if this env is a single agent env, the length of state_generator_kwargs should be 1 or equal to num_env or equal to num_env*num_agent_per_env.
             "kwargs": [
                 {
@@ -274,6 +276,16 @@ class NavigationEnv(DroneGymEnvsBase):
                 
         )
         return reward
+
+    # solely reset each agent
+    def reset_by_id(self, indices=None, state=None, reset_obs=None):
+        super().reset_by_id(indices=None, state=None, reset_obs=None)
+        # if your agent have any new private observation that should be reset. Please add here. RacingEnv.py provides an example.
+    
+    # reset all the agents and scenes, noting that here if you have a scene dataset, VisFly will automatically load to other data in this dataset.
+    def reset(self, state=None, obs=None):
+        super().reset(state=state, obs=obs)
+
 ```
 Except from pose(position, linear_velocity, orientation, angular_velocity), the closest obstacle is also recorded as properties, including `self.collision_point`, `self.collision_vector`, `self.collision_dis`.
 It probably will be helpful to train the capacity of avoiding obstacles.
@@ -513,3 +525,4 @@ python examples/cluttered_flight/rl.py -t 1 -c "second_train" -w "first_train_1"
 ```
 The well-trained model will be saved as `second_train_1.zip`. 
 At present, you could transfer this model and verify in another simulator or in reality.
+

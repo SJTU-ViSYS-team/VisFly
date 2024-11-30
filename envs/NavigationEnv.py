@@ -60,31 +60,18 @@ class NavigationEnv(DroneGymEnvsBase):
             self,
             indices=None
     ) -> Dict:
-        if not self.requires_grad:
-            if self.visual:
-                return {
-                    "state": self.state.cpu().clone().numpy(),
-                    "depth": self.sensor_obs["depth"],
-                    "target": self.target.cpu().clone().numpy(),
-                    # "latent": self.latent.cpu().clone(),
-                }
-            else:
-                return {
-                    "state": self.state.cpu().clone().numpy(),
-                    "target": self.target.cpu().clone().numpy()
-                }
+
+        if self.visual:
+            return TensorDict({
+                "state": self.state.to(self.device),
+                "depth": th.from_numpy(self.sensor_obs["depth"]).to(self.device),
+                "target": self.target.to(self.device)
+            })
         else:
-            if self.visual:
-                return {
-                    "state": self.state.to(self.device),
-                    "depth": th.from_numpy(self.sensor_obs["depth"]).to(self.device),
-                    "target": self.target.to(self.device)
-                }
-            else:
-                return {
-                    "state": self.state.to(self.device),
-                    "target": self.target.to(self.device)
-                }
+            return TensorDict({
+                "state": self.state.to(self.device),
+                "target": self.target.to(self.device)
+            })
 
     def get_success(self) -> th.Tensor:
         return (self.position - self.target).norm(dim=1) <= self.success_radius
@@ -174,28 +161,18 @@ class NavigationEnv2(NavigationEnv):
             self.angular_velocity / 10,
         ]).to(self.device)
 
-        if not self.requires_grad:
-            return TensorDict({
-                "state": state.cpu().clone().numpy(),
-                # "state": self.state.cpu().clone().numpy(),
-                # "depth": encoder.encode(th.from_numpy(self.sensor_obs["depth"]).to(self.device)).cpu().numpy(),
-                # "target": self.target.cpu().clone().numpy(),
-                # "latent": self.latent.cpu().clone(),
-            })
-
-        else:
-            # return TensorDict({
-            #     "state": self.state.to(self.device) ,
-            #     # "depth": encoder.encode(th.from_numpy(self.sensor_obs["depth"]).to(self.device)).detach(),
-            #     "target": self.target.to(self.device),
-            #     # "depth_unencode": th.as_tensor(self.sensor_obs["depth"]),
-            # })
-            return TensorDict({
-                "state": state,
-                # "depth": encoder.encode(th.from_numpy(self.sensor_obs["depth"]).to(self.device)),
-                # "target": self.target.to(self.device),
-                # "depth_unencode": th.as_tensor(self.sensor_obs["depth"]),
-            })
+        # return TensorDict({
+        #     "state": self.state.to(self.device) ,
+        #     # "depth": encoder.encode(th.from_numpy(self.sensor_obs["depth"]).to(self.device)).detach(),
+        #     "target": self.target.to(self.device),
+        #     # "depth_unencode": th.as_tensor(self.sensor_obs["depth"]),
+        # })
+        return TensorDict({
+            "state": state,
+            # "depth": encoder.encode(th.from_numpy(self.sensor_obs["depth"]).to(self.device)),
+            # "target": self.target.to(self.device),
+            # "depth_unencode": th.as_tensor(self.sensor_obs["depth"]),
+        })
 
     def to(self, device):
         super().to(device)

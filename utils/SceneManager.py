@@ -112,7 +112,7 @@ def calc_camera_transform(
 class SceneManager(ABC):
     def __init__(
             self,
-            path: str = "datasets/spy_datasets/configs/garage_empty",
+            path: str = "VisFly/datasets/spy_datasets/configs/garage_empty",
             scene_type: str = "json",
             num_scene: int = 1,
             num_agent_per_scene: Union[int, List[int]] = 1,
@@ -193,6 +193,9 @@ class SceneManager(ABC):
             self.render_settings["resolution"] = self.render_settings.get("resolution", [256, 256])
             self.render_settings["position"] = self.render_settings.get("position", None)
 
+            if self.render_settings["position"] is not None:
+                self.render_settings["position"] = th.as_tensor(self.render_settings["position"], dtype=th.float32)
+
             self._render_camera = [None for _ in range(num_scene)]
             self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
             self._line_renders: habitat_sim.gfx.DebugLineRender = [None for _ in range(num_scene)]
@@ -209,22 +212,19 @@ class SceneManager(ABC):
         index = parts.index("datasets")+1
         root_addr = os.path.dirname(__file__)+"/../"
         self.datasets = parts[index]
+        self._object_path = [root_addr + "datasets/spy_datasets/configs/agents/DJI_Mavic_"+c+".object_config.json" for c in ["red","green","blue","orange"]]
         if "hm3d" in parts[index].lower():
             self.datasets_name = "hm3d"
             self._datasets_path = root_addr+"datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
-            self._object_path = root_addr+"datasets/spy_datasets/configs/agents/DJI_Mavic_Mini_2.object_config.json"
         elif "spy" in parts[index].lower():
             self.datasets_name = "spy_datasets"
             self._datasets_path = root_addr+"datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
-            self._object_path = root_addr+"datasets/spy_datasets/configs/agents/DJI_Mavic_Mini_2.object_config.json"
         elif "hssd" in parts[index].lower():
             self.datasets_name = "hssd-hab"
             self._datasets_path = root_addr+"datasets/hssd-hab/hssd-hab.scene_dataset_config.json"
-            self._object_path = root_addr+"datasets/hssd-hab/objects/0/DJI_Mavic_Mini_2.object_config.json"
         elif "mp3d" in parts[index].lower():
             self.datasets_name = "mp3d"
             self._datasets_path = root_addr+"datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
-            self._object_path = root_addr+"datasets/spy_datasets/configs/agents/DJI_Mavic_Mini_2.object_config.json"
         else:
             raise ValueError("datasets name is not supported")
 
@@ -474,7 +474,7 @@ class SceneManager(ABC):
             points = std_to_habitat(points, None)[0]
             for indice, point in enumerate(points):
                 self._line_renders[0].draw_circle(
-                    mn.Vector3(point[:3]), radius=0.25, color=ColorSet3[indice]
+                    mn.Vector3(point), radius=0.25, color=ColorSet3[indice]
                 )
 
         if lines is not None:
@@ -720,7 +720,7 @@ class SceneManager(ABC):
                 # create objects in each scene
                 for agent_id in range(self.num_agent_per_scene):
                     self._objects[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(
-                        self.render_settings["object_path"]
+                        self._object_path[agent_id % len(self._object_path)]
                     )
 
             if self.is_multi_drone:
@@ -728,7 +728,7 @@ class SceneManager(ABC):
                     self._obj_mgrs[scene_id] = self.scenes[scene_id].get_rigid_object_manager()
                     for agent_id in range(self.num_agent_per_scene):
                         self._objects[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(
-                            self._object_path
+                            self._object_path[agent_id % len(self._object_path)]
                         )
 
         test = 1
@@ -941,130 +941,3 @@ def debug_get_test_path():
 
     return delta_pos, delta_ori
 
-
-def debug():
-    from utils.randomization import UniformStateRandomizer
-    from utils.type import Uniform
-    import torch as th
-
-    from utils.common import rgba2rgb, obs_list2array
-
-    num_scene = 1
-    num_agent_per_scene = 1
-    a = SceneManager(
-        num_scene=num_scene,
-        num_agent_per_scene=num_agent_per_scene,
-        path="datasets/spy_datasets/configs/scenes",
-        # path="datasets/spy_datasets/stages3",
-        # path="datasets/spy_datasets/configs/garage_simple",
-        # scene_type="glb",
-        scene_type="json",
-        # path="/home/lfx-desktop//files/habitat-sim/habitat_scenes/data/versioned_data/hm3d-1.0/hm3d/minival",
-        # path="datasets/spy_datasets/stages",
-        render_settings={
-            "mode": "fix",
-            "view": "near",
-            "sensor_type": habitat_sim.SensorType.COLOR,
-            "axes": True,
-            "trajectory": False,
-            "object_path": "datasets/spy_datasets/configs/objects/frl_apartment_shoe_01.object_config.json",
-            # "object_path": "datasets/replica_cad_dataset/configs/objects/frl_apartment_shoe_01.object_config.json",
-            "line_width": 1.0,
-        },
-        sensor_settings=[
-            {
-                "uuid": "depth",
-                "resolution": [128, 128],
-                "position": [0, 0, -0.2],
-                "sensor_type": habitat_sim.SensorType.DEPTH,
-            },
-        ]
-    )
-    # for i in range(6):
-    #     a.load_scenes()
-    #     break
-    # a.reset()
-    # pos, _ = a.get_pose()
-    AverageRandomizers = UniformStateRandomizer(
-        # position=Gaussian(mean=np.array([3, 0, 0.5]), std=np.array([1.0, 1.0, 0.0])),
-        position=Uniform(mean=np.array([0, 1, 1]), half=np.array([0.5, 0.5, 0.0])),
-        # position=Gaussian(mean=np.array([3,1,0.5]), std=np.array([0.5,0.5,0])),
-        orientation=Uniform(mean=np.array([0, 0, 0]), half=np.array([0, 0, 0])),
-        velocity=Uniform(mean=np.array([0, 0, 0]), half=np.array([0, 0, 0])),
-        angular_velocity=Uniform(mean=np.array([0, 0, 0]), half=np.array([0, 0, 0])),
-        # is_collision_func=a.get_is_collision,
-        scene_id=0,
-    )
-
-    delta_pos, delta_ori = debug_get_test_path()
-    d_x, d_y = np.diff(delta_pos, axis=0)[:, 0], np.diff(delta_pos, axis=0)[:, 1]
-
-    import cv2, time
-    from tqdm import tqdm
-
-    frame_id = 0
-    max_step = 100000
-    scene_update_step = max_step / 10
-    pbar = tqdm(range(100000))
-
-    period = 4000
-
-    a.load_scenes()
-    reset_pos, reset_ori, _, _ = AverageRandomizers.safe_generate(num=num_agent_per_scene * num_scene)
-    a.reset_agents(std_positions=reset_pos, std_orientations=reset_ori)
-    pos, _ = a.get_pose()
-
-    indices = np.zeros((num_scene * num_agent_per_scene), dtype=int)
-
-    sta_time = time.time()
-    for i in pbar:
-        frame_id += 1
-
-        if i % 1000 < 999:
-            x_info = "forward" if d_x[i % period] > 0 else "backward"
-            y_info = "left" if d_y[i % period] > 0 else "right"
-
-        if frame_id % 100 == 0:
-            fps = frame_id / (time.time() - sta_time)
-            frame_id = 0
-            sta_time = time.time()
-            pbar.set_description(f"FPS: {fps:.2f} {x_info} {y_info}")
-
-        new_pos = th.from_numpy(pos + delta_pos[indices % period])
-        new_ori = th.from_numpy(delta_ori[indices % period])
-        a.set_pose(
-            new_pos,
-            new_ori,
-        )
-        obs = a.get_observation()
-        # render_obs = rgba2rgb(a.render(fix_pos=th.tensor([[5, 0, 7]])))
-        render_obs = rgba2rgb(a.render())
-
-        # print(a.get_collision_distance())
-        # print(a.get_obstacle_position())
-        is_collispeds = a.get_is_collision()
-        for id, is_collisped in enumerate(is_collispeds):
-            if is_collisped:
-                print("Collision detected")
-                print(a.get_collision_point(), a.get_collision_distance())
-
-                reset_pos, reset_ori, _, _ = AverageRandomizers.safe_generate(num=1)
-                a.reset_agents(std_positions=reset_pos, std_orientations=reset_ori, indices=id)
-                pos[id], _ = a.get_pose(id)
-                indices[id] = 0
-            else:
-                indices[id] += 1
-
-        # create combined image and show
-        camera1_obs = obs
-        obs_grid = obs_list2array(camera1_obs, num_scene, num_agent_per_scene)
-        render_grid = np.vstack(render_obs)
-        cv2.imshow("all Grid", obs_grid)
-        cv2.imshow("obs Grid", render_grid)
-        cv2.waitKey(1)
-
-    a.close()
-
-
-if __name__ == "__main__":
-    debug()

@@ -1,3 +1,4 @@
+import warnings
 from copy import deepcopy
 
 from stable_baselines3.common.vec_env import VecEnv
@@ -7,8 +8,6 @@ from gymnasium import spaces
 import numpy as np
 from abc import ABC, abstractmethod
 import torch as th
-from ...utils.type import Uniform
-from ...utils.randomization import UniformStateRandomizer
 from habitat_sim import SensorType
 from ...utils.type import ACTION_TYPE
 
@@ -32,12 +31,20 @@ class DroneGymEnvsBase(VecEnv):
 
         super(VecEnv, self).__init__()
 
+        # raise Warning if device is cuda while num_envs is less than 1e3
+        device = th.device(device)
+        if num_agent_per_scene * num_scene < 1e3 and (device.type == 'cuda'):
+            _env_device = th.device("cpu")
+            warnings.warn("The number of envs is less than 1e3, cpu is faster than gpu. To make training faster, we have set device to cpu.")
+        else:
+            _env_device = device
+
         self.envs = DroneEnvsBase(
             num_agent_per_scene=num_agent_per_scene,
             num_scene=num_scene,
             seed=seed,
             visual=visual,
-            device=th.device("cpu"),  # because at least under 1e3 (common useful range) envs, cpu is faster than gpu
+            device=_env_device,  # because at least under 1e3 (common useful range) envs, cpu is faster than gpu
             dynamics_kwargs=dynamics_kwargs,
             random_kwargs=random_kwargs,
             scene_kwargs=scene_kwargs,
@@ -105,18 +112,19 @@ class DroneGymEnvsBase(VecEnv):
         self._action = th.zeros((self.num_agent, 4))
 
         self._success = th.zeros(self.num_agent, dtype=bool)
+        self._failure = th.zeros(self.num_agent, dtype=bool)
+        self._episode_done = th.zeros(self.num_agent, dtype=bool)
         self._done = th.zeros(self.num_agent, dtype=bool)
         self._info = [{"TimeLimit.truncated": False} for _ in range(self.num_agent)]
 
         self.max_episode_steps = max_episode_steps
-        self.auto_examine = not requires_grad
 
         # necessary for gym compatibility
         self.render_mode = ["None" for _ in range(self.num_agent)]
 
     def step(self, _action, is_test=False):
         self._action = _action if isinstance(_action, th.Tensor) else th.as_tensor(_action)
-        # assert self._action.max() <= self.action_space.high and self._action.min() >= self.action_space.low
+        assert self._action.max() <= 1 and self._action.min() >= -1
         # dot = make_dot(self._action.mean(), "GymEnv")
         # update state and observation and _done
         self.envs.step(self._action)
@@ -127,16 +135,17 @@ class DroneGymEnvsBase(VecEnv):
 
         # update success _done
         self._success = self.get_success()
+        self._failure = self.get_failure()
 
-        pre_rewards_debug = self._rewards.clone().detach()
         # update _rewards
         self._reward = self.get_reward()
         self._rewards += self._reward
 
         # update collision, timeout _done
-        test = 1
-        self._done = self._done | self._success | self.is_collision | (self._step_count >= self.max_episode_steps)  # | self.get_done()
-        # self._done = self._success | (self._step_count >= self.max_episode_steps) | self.get_done()
+        self._episode_done = self._episode_done | self._success | self._failure | \
+                     self.is_collision
+
+        self._done = self._episode_done | (self._step_count >= self.max_episode_steps)
 
         # update and record _info: eposide, timeout
         # full_state = self.full_state
@@ -144,39 +153,48 @@ class DroneGymEnvsBase(VecEnv):
             # self._info[indice]["state"]= full_state[indice].cpu().clone().detach().numpy()
             # i don't know why, but whatever this returned info data address should be strictly independent with torch.
             if self._done[indice]:
-                if self._success[indice]:
-                    self._info[indice]["is_success"] = True
-                else:
-                    self._info[indice]["is_success"] = False
+                self._info[indice] = self.collect_info(indice, observations)
+            self._info[indice]["episode_done"] = self._episode_done[indice].clone().detach()
 
-                self._info[indice]["episode"] = {
-                    "r": self._rewards[indice].cpu().clone().detach().numpy(),
-                    "l": self._step_count[indice].cpu().clone().detach().numpy(),
-                    "t": (self._step_count[indice] * self.envs.dynamics.ctrl_dt).cpu().clone().detach().numpy(),
-                }
-                if self.requires_grad:
-                    self._info[indice]["terminal_observation"] = {
-                        key: observations[key][indice].detach() for key in observations.keys()
-                    }
-                else:
-                    self._info[indice]["terminal_observation"] = {
-                        key: observations[key][indice] for key in observations.keys()
-                    }
-
-                if self._step_count[indice] >= self.max_episode_steps:
-                    self._info[indice]["TimeLimit.truncated"] = True
-
+        # return and auto-reset
+        _done, _reward, _info = self._done.clone(), self._reward.clone(), self._info.copy()
+        # reset all the dead agents
+        if self._done.any() and not is_test:
+            self.examine()
         if not self.requires_grad:
             # model free RL
-            _done, _reward, _info = self._done.cpu().clone().numpy(), self._reward.cpu().clone().numpy(), self._info.copy()
-            # reset all the dead agents
-            if self._done.any() and self.auto_examine and not is_test:
-                self.examine()
-
-            return self.get_observation(), _reward, _done, _info
+            return observations, _reward.cpu().numpy(), _done.cpu().numpy(), _info
         else:
             # analytical gradient RL
-            return observations, self._reward, self._done, self._info
+            if self._done.any() and not is_test:
+                self.examine()
+            return observations, _reward,_done,  _info
+
+    def collect_info(self, indice, observations):
+        _info = {}
+        if self._success[indice]:
+            _info["is_success"] = True
+        else:
+            _info["is_success"] = False
+
+        _info["episode"] = {
+            "r": self._rewards[indice].cpu().clone().detach().numpy(),
+            "l": self._step_count[indice].cpu().clone().detach().numpy(),
+            "t": (self._step_count[indice] * self.envs.dynamics.ctrl_dt).cpu().clone().detach().numpy(),
+        }
+        if self.requires_grad:
+            _info["terminal_observation"] = {
+                key: observations[key][indice].detach() for key in observations.keys()
+            }
+        else:
+            self._info[indice]["terminal_observation"] = {
+                key: observations[key][indice] for key in observations.keys()
+            }
+
+        if self._step_count[indice] >= self.max_episode_steps:
+            _info["TimeLimit.truncated"] = True
+        _info["episode"]["extra"] = {}
+        return _info
 
     def detach(self):
         self.envs.detach()
@@ -193,11 +211,12 @@ class DroneGymEnvsBase(VecEnv):
         self._step_count = self._step_count.clone().detach()
         self._done = self._done.clone().detach()
 
-    def reset(self, state=None):
+    def reset(self, state=None, obs=None):
         self._step_count = th.zeros((self.num_agent,), dtype=th.int32)
         self._reward = th.zeros((self.num_agent,))
         self._rewards = th.zeros((self.num_agent,))
         self._done = th.zeros(self.num_agent, dtype=bool)
+        self._episode_done = th.zeros(self.num_agent, dtype=bool)
         self._info = [{"TimeLimit.truncated": False} for _ in range(self.num_agent)]
         if self.latent is not None:
             self.latent = th.zeros((self.num_agent, self.latent.shape[1]), device=self.device)
@@ -205,16 +224,19 @@ class DroneGymEnvsBase(VecEnv):
         self.envs.reset()
         return self.get_observation()
 
-    def reset_by_id(self, indices=None, state=None):
+    def reset_by_id(self, indices=None, state=None, reset_obs=None):
+        assert ~(state is None and reset_obs is None) or (state is not None and reset_obs is not None)
         if indices is None:
             self._reward = th.zeros((self.num_agent,))
             self._rewards = th.zeros((self.num_agent,))
             self._done = th.zeros(self.num_agent, dtype=bool)
+            self._episode_done = th.zeros(self.num_agent, dtype=bool)
             self._step_count = th.zeros((self.num_agent,), dtype=th.int32)
         else:
             self._reward[indices] = 0
             self._rewards[indices] = 0
             self._done[indices] = False
+            self._episode_done[indices] = False
             self._step_count[indices] = 0
 
         self.envs.reset_agents(indices, state=state)
@@ -259,7 +281,12 @@ class DroneGymEnvsBase(VecEnv):
 
     @abstractmethod
     def get_success(self) -> th.Tensor:
-        self._success = np.full((self.num_agent,), False, dtype=bool)
+        _success = th.full((self.num_agent,), False, dtype=bool)
+        return _success
+
+    def get_failure(self) -> th.Tensor:
+        _failure = th.full((self.num_agent,), False, dtype=bool)
+        return _failure
 
     @abstractmethod
     def get_reward(
@@ -308,8 +335,16 @@ class DroneGymEnvsBase(VecEnv):
         return self._done
 
     @property
+    def episode_done(self):
+        return self._episode_done
+
+    @property
     def success(self):
         return self._success
+
+    @property
+    def failure(self):
+        return self._failure
 
     @property
     def direction(self):
@@ -397,3 +432,6 @@ class DroneGymEnvsBase(VecEnv):
 
     def to(self, device):
         self.device = device if not isinstance(device, str) else th.device(device)
+
+    def eval(self):
+        self.envs.eval()

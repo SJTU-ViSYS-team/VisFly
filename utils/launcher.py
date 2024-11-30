@@ -3,24 +3,25 @@ import argparse
 training_params = {
     "time": None,
     "num_envs": 100,
-    "learning_step": 1e7,
+    "learning_step": 0.2e7,
     "policy": None,
     "algorithm": "PPO",
-    "learning_rate": 1e-4,
-    "n_steps": 256,
-    "batch_size": 10*256,
+    "learning_rate": 3e-4,
+    "n_steps": 100,
+    "batch_size": 10000,
     "gamma": 0.99,
     "gae_lambda": 0.95,
     "ent_coef": 0.00,
     "vf_coef": 0.5,
     "max_grad_norm": 0.5,
     "clip_range": 0.2,
-    "n_epochs": 10,
+    "n_epochs": 5,
     "target_kl": None,
     "verbose": 1,
     "comment": None,
     "seed": 42,
     "max_episode_steps": 256,
+    "train_freq": 100,
 }
 
 def dl_parser():
@@ -68,5 +69,7 @@ def rl_parser():
     parser.add_argument("-c", "--comment", type=str, default=None, help="add comments")
     parser.add_argument("--log", type=str, default=None)
     parser.add_argument("-m", "--num", type=int, default=100, help="number of agents")
+    parser.add_argument("-s", "--seed", type=int, default=42, help="seed")
+
     return parser
 

@@ -1,20 +1,20 @@
 import numpy as np
 from .dynamics import Dynamics
-from ...utils.sceneDatasets import SceneManager
+from ...utils.ObjectManger import ObjectManager
+from ...utils.SceneManager import SceneManager
 from typing import List, Union, Tuple, Dict, Optional
-from ...utils.randomization import UniformStateRandomizer, NormalStateRandomizer
+from ...utils.randomization import UniformStateRandomizer, NormalStateRandomizer, UnionRandomizer
 from ...utils.type import Uniform, Normal
 from torch import Tensor
 from typing import Optional, Type
 import torch as th
-import json
-from ...utils.common import habitat_to_std
+
 
 IS_BBOX_COLLISION = True
 
 
 class DroneEnvsBase:
-    state_generator_alias = {"Uniform": UniformStateRandomizer, "Normal":NormalStateRandomizer}
+    state_generator_alias = {"Uniform": UniformStateRandomizer, "Normal":NormalStateRandomizer, "Union":UnionRandomizer}
 
     def __init__(
             self,
@@ -70,6 +70,15 @@ class DroneEnvsBase:
             **scene_kwargs
         ) if visual else None
 
+        # if scene_kwargs.get(["object_kwargs"], None) is not None:
+        #     self.objectManager = ObjectManager(
+        #         num_scene=num_scene,
+        #         num_agent_per_scene=num_agent_per_scene,
+        #         dt=dynamics_kwargs.get("dt", 0.02),
+        #         object_scene_handle=self.sceneManager.object_list if self.sceneManager is not None else None,
+        #         **scene_kwargs.get(["object_kwargs"])
+        #     )
+
         self.stateGenerators = self._create_randomizer(
             random_kwargs
         )
@@ -79,6 +88,8 @@ class DroneEnvsBase:
         self._sensor_list = [sensor["uuid"] for sensor in sensor_kwargs] if sensor_kwargs is not None else []
         self._visual_sensor_list = [s for s in self._sensor_list if "IMU" not in s]
         # self.reset()
+
+        self._eval = False
 
     def _create_noise_model(self):
         self.noise_settings["IMU"] = self.noise_settings.get("IMU", {
@@ -109,7 +120,7 @@ class DroneEnvsBase:
 
     def _create_bbox(self):
         if not self.visual:
-            bboxes = [th.tensor([[-2., -10., 0.], [18., 10., 7.]]).to(self.device)]
+            bboxes = [th.tensor([[-5., -10., 0.], [18., 10., 7.]]).to(self.device)]
         # else:
         #     bboxes = []
         #     if self.sceneManager.scenes[0] is None:
@@ -136,17 +147,23 @@ class DroneEnvsBase:
         if issubclass(state_generator_class, UniformStateRandomizer):
             generator_kwargs = [{
                 "position": kwarg.get("position"),
-                "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
-                "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
-                "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]})
+                # "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
+                # "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
+                # "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]})
             } for kwarg in kwargs_list]
         elif issubclass(state_generator_class, NormalStateRandomizer):
             generator_kwargs = [{
                 "position": kwarg.get("position"),
-                "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
-                "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
-                "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]})
+                # "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
+                # "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
+                # "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]})
             } for kwarg in kwargs_list]
+        elif issubclass(state_generator_class, UnionRandomizer):
+            # generator_kwargs = [kwarg.get("kwargs") for kwarg in kwargs_list]
+            generator_kwargs = kwargs_list
+            pass
+        else:
+            raise ValueError("State generator class is not available.")
 
         if self.visual:
             stateGenerators = []
@@ -209,7 +226,7 @@ class DroneEnvsBase:
                 th.empty((len(indices), 3), device=self.device), th.empty((len(indices), 3), device=self.device)
         for data_id, index in enumerate(indices):
             positions[data_id], orientations[data_id], velocities[data_id], angular_velocities[data_id] = \
-                self.stateGenerators[index].safe_generate(num=1)
+                self.stateGenerators[index].safe_generate(num=1, _eval=self._eval)
 
         return positions, orientations, velocities, angular_velocities
 
@@ -222,13 +239,13 @@ class DroneEnvsBase:
 
     def reset_agents(self, indices: Optional[List] = None, state=None) -> Tuple[Tensor, Optional[np.ndarray]]:
         indices = indices if (indices is None or hasattr(indices, "__iter__")) else th.as_tensor([indices], device=self.device)
-        motor_speed, thrust = None, None
+        motor_speed, thrust, t = None, None, None
         if state is not None:
             if isinstance(state, th.Tensor):
                 state = state.to(self.device)
-                pos, ori, vel, ori_vel, motor_speed, thrust = \
+                pos, ori, vel, ori_vel, motor_speed, thrust, t = \
                     state[:,:3].clone().detach(), state[:,3:7].clone().detach(), state[:,7:10].clone().detach(),\
-                        state[:,10:13].clone().detach(), state[:,13:17].clone().detach(), state[:,17:21].clone().detach()
+                        state[:,10:13].clone().detach(), state[:,13:17].clone().detach(), state[:,17:21].clone().detach(), state[:,21].clone().detach()
                 # state[:, :3], state[:, 3:7], state[:, 7:10], state[:, 10:13], state[:, 13:17], state[:, 17:21]
             else:
                 if len(state) == 4:
@@ -239,7 +256,7 @@ class DroneEnvsBase:
                     raise ValueError("State should be a tuple of 4 or 6 elements.")
         else:
             pos, ori, vel, ori_vel = self._generate_state(indices)
-        self.dynamics.reset(pos=pos, ori=ori, vel=vel, ori_vel=ori_vel, motor_omega=motor_speed, thrusts=thrust, indices=indices)
+        self.dynamics.reset(pos=pos, ori=ori, vel=vel, ori_vel=ori_vel, motor_omega=motor_speed, thrusts=thrust, t=t, indices=indices)
         if self.visual:
             self.sceneManager.reset_agents(std_positions=pos, std_orientations=ori, indices=indices)
             self.update_observation(indices=indices)
@@ -415,3 +432,10 @@ class DroneEnvsBase:
     @property
     def collision_dis(self):
         return self._collision_dis
+
+    def eval(self):
+        self._eval = True
+
+    def train(self):
+        self._eval = False
+

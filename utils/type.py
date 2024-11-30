@@ -139,6 +139,7 @@ class TensorDict(dict):
     def cpu(self):
         for key, value in self.items():
             self[key] = self[key].cpu()
+        return self
 
     def as_tensor(self, device=th.device("cpu")):
         d = {}
@@ -150,5 +151,28 @@ class TensorDict(dict):
     def to(self, device):
         for key, value in self.items():
             self[key] = value.to(device)
+        return self
+
+    def reshape(self, shape):
+        for key, value in self.items():
+            self[key] = value.reshape(shape)
+        return self
+
+    @staticmethod
+    def stack(x_list):
+        keys = x_list[0].keys()
+        r = TensorDict({})
+
+        for key in keys:
+            cache = []
+            for x in x_list:
+                cache.append(x[key])
+            r[key] = th.stack(cache)
+            r[key] = th.reshape(r[key], (-1, *r[key].shape[2:]))
+        return r
+
+    def numpy(self):
+        for key, value in self.items():
+            self[key] = self[key].cpu().numpy()
         return self
 

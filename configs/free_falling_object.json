@@ -1,0 +1,28 @@
+{
+  "objects": [
+    {
+      "name": "a",
+      "id": 0,
+      "dynamic_kwargs": {
+        "mode": "static",
+        "position": {"mean": [0,0,0], "half": [0,0,0]},
+        "orientation": {"mean": [0,0,0], "half": [0,0,0]},
+        "velocity": {"mean": [0,0,0], "half": [0,0,0]},
+        "angular_velocity": {"mean": [0,0,0], "half": [0,0,0]}
+      },
+      "init_kwargs": {
+        "mode": "uniform",
+        "position": {"mean": [5.0,0,3], "half": [0.0,0,0]},
+        "orientation": {"mean": [0,0,0], "half": [0,0,0]},
+        "velocity": {"mean": [0,0,0.0], "half": [1,1.0,0]},
+        "angular_velocity": {"mean": [0,0,0], "half": [0,0,0]}
+      },
+      "render_asset": "/..",
+      "size": [
+        1,
+        1,
+        1
+      ]
+    }
+  ]
+}

@@ -54,19 +54,19 @@ class Quaternion:
     @property
     def R(self):
         # return th.permute(th.stack([
-        #     th.stack([1 - 2 * (self.y ** 2 + self.z ** 2), 2 * (self.x * self.y - self.z * self.w), 2 * (self.x * self.z + self.y * self.w)]),
-        #     th.stack([2 * (self.x * self.y + self.z * self.w), 1 - 2 * (self.x ** 2 + self.z ** 2), 2 * (self.y * self.z - self.x * self.w)]),
-        #     th.stack([2 * (self.x * self.z - self.y * self.w), 2 * (self.y * self.z + self.x * self.w), 1 - 2 * (self.x ** 2 + self.y ** 2)])
+        #     th.stack([1 - 2 * (self.y.pow(2) + self.z.pow(2)), 2 * (self.x * self.y - self.z * self.w), 2 * (self.x * self.z + self.y * self.w)]),
+        #     th.stack([2 * (self.x * self.y + self.z * self.w), 1 - 2 * (self.x.pow(2) + self.z.pow(2)), 2 * (self.y * self.z - self.x * self.w)]),
+        #     th.stack([2 * (self.x * self.z - self.y * self.w), 2 * (self.y * self.z + self.x * self.w), 1 - 2 * (self.x.pow(2) + self.y.pow(2))])
         # ]), (2,0,1))
         return th.stack([
-            th.stack([1 - 2 * (self.y ** 2 + self.z ** 2), 2 * (self.x * self.y - self.z * self.w), 2 * (self.x * self.z + self.y * self.w)]),
-            th.stack([2 * (self.x * self.y + self.z * self.w), 1 - 2 * (self.x ** 2 + self.z ** 2), 2 * (self.y * self.z - self.x * self.w)]),
-            th.stack([2 * (self.x * self.z - self.y * self.w), 2 * (self.y * self.z + self.x * self.w), 1 - 2 * (self.x ** 2 + self.y ** 2)])
+            th.stack([1 - 2 * (self.y.pow(2) + self.z.pow(2)), 2 * (self.x * self.y - self.z * self.w), 2 * (self.x * self.z + self.y * self.w)]),
+            th.stack([2 * (self.x * self.y + self.z * self.w), 1 - 2 * (self.x.pow(2) + self.z.pow(2)), 2 * (self.y * self.z - self.x * self.w)]),
+            th.stack([2 * (self.x * self.z - self.y * self.w), 2 * (self.y * self.z + self.x * self.w), 1 - 2 * (self.x.pow(2) + self.y.pow(2))])
         ])
 
     @property
     def x_axis(self):
-        return th.stack([1 - 2 * (self.y ** 2 + self.z ** 2), 2 * (self.x * self.y + self.z * self.w), 2 * (self.x * self.z - self.y * self.w)]).T
+        return th.stack([1 - 2 * (self.y.pow(2) + self.z.pow(2)), 2 * (self.x * self.y + self.z * self.w), 2 * (self.x * self.z - self.y * self.w)]).T
 
     @property
     def shape(self):
@@ -139,7 +139,7 @@ class Quaternion:
         return self.conjugate() / self.norm()
 
     def norm(self):
-        return th.sqrt(self.w ** 2 + self.x ** 2 + self.y ** 2 + self.z ** 2)
+        return th.sqrt(self.w.pow(2) + self.x.pow(2) + self.y.pow(2) + self.z.pow(2))
 
     def normalize(self):
         return self / self.norm()
@@ -158,14 +158,14 @@ class Quaternion:
 
     def toEuler(self, order="zyx"):
         if order == "zyx":
-            roll = th.atan2(2 * (self.w * self.x + self.y * self.z), 1 - 2 * (self.x ** 2 + self.y ** 2))
+            roll = th.atan2(2 * (self.w * self.x + self.y * self.z), 1 - 2 * (self.x.pow(2) + self.y.pow(2)))
             pitch = th.asin(2 * (self.w * self.y - self.z * self.x))
-            yaw = th.atan2(2 * (self.w * self.z + self.x * self.y), 1 - 2 * (self.y ** 2 + self.z ** 2))
-            return th.stack([roll, pitch, yaw]).flipud()  # roll pitch yaw
+            yaw = th.atan2(2 * (self.w * self.z + self.x * self.y), 1 - 2 * (self.y.pow(2) + self.z.pow(2)))
+            return th.stack([roll, pitch, yaw])  # roll pitch yaw
         elif order == "xyz":
-            roll = th.atleast_1d(th.atan2(2 * (self.w * self.y - self.x * self.z), 1 - 2 * (self.x ** 2 + self.y ** 2)))
+            roll = th.atleast_1d(th.atan2(2 * (self.w * self.y - self.x * self.z), 1 - 2 * (self.x.pow(2) + self.y.pow(2))))
             pitch = th.atleast_1d(th.asin(2 * (self.w * self.z - self.y * self.x)))
-            yaw = th.atleast_1d(th.atan2(2 * (self.w * self.x + self.y * self.z), 1 - 2 * (self.x ** 2 + self.z ** 2)))
+            yaw = th.atleast_1d(th.atan2(2 * (self.w * self.x + self.y * self.z), 1 - 2 * (self.x.pow(2) + self.z.pow(2))))
             return th.stack([roll, pitch, yaw])  # roll pitch yaw
 
     @staticmethod

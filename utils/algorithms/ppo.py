@@ -611,6 +611,15 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                                 "rollout/success_rate",
                                 safe_mean(self.ep_success_buffer),
                             )
+                            if len(self.ep_info_buffer[0]["extra"]) >= 0:
+                                for key in self.ep_info_buffer[0]["extra"].keys():
+                                    self.logger.record(
+                                        f"rollout/ep_{key}_mean",
+                                        safe_mean(
+                                            [ep_info["extra"][key] for ep_info in self.ep_info_buffer]
+                                        ),
+                                    )
+
                         self.logger.record("time/fps", fps)
                         self.logger.record(
                             "time/time_elapsed", int(time_elapsed), exclude="tensorboard"
@@ -984,6 +993,7 @@ class ppo(PPO):
         root = os.path.dirname(os.path.abspath(sys.argv[0]))
         self.save_path = f"{root}/saved" if save_path is None else save_path
         self.policy_save_path = f"{self.save_path}/ppo_{self.comment}" if comment is not None else f"{self.save_path}/ppo"
+
 
     def learn(
             self: SelfPPO,

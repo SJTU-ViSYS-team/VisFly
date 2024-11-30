@@ -30,9 +30,11 @@ class Dynamics:
             seed: int = 42,
             dt: float = 0.0025,
             ctrl_dt: float = 0.02,
+            ctrl_delay: bool = True,
             action_space: Tuple[float, float] = (-1, 1),
             device: th.device = th.device("cpu"),
             integrator: str = "euler",
+
     ):
         assert action_type in ["bodyrate", "thrust", "velocity", "position"]  # 对两个变量进行断言检查
         assert ori_output_type in ["quaternion", "euler"]
@@ -61,6 +63,7 @@ class Dynamics:
             raise ValueError("ctrl_dt should be a multiple of dt")
         self._interval_steps = int(ctrl_dt / dt)
         self._integrator = integrator
+        self._ctrl_delay = ctrl_delay
 
         # initialization
         self.set_seed(seed)
@@ -122,6 +125,7 @@ class Dynamics:
             ori_vel: Union[List, th.Tensor, None] = None,
             motor_omega: Union[List, th.Tensor, None] = None,
             thrusts: Union[List, th.Tensor, None] = None,
+            t: Union[List, th.Tensor, None] = None,
             indices: Optional[List] = None,
     ):
         if indices is None:
@@ -131,7 +135,9 @@ class Dynamics:
             self._angular_velocity = th.zeros((3, self.num), device=self.device) if ori_vel is None else ori_vel.T
             self._motor_omega = th.ones((4, self.num), device=self.device) * self._bd_rotor_omega.min if motor_omega is None else motor_omega.T
             self._thrusts = th.ones((4, self.num), device=self.device) * self._bd_thrust.min if thrusts is None else thrusts.T
-            self._t = th.zeros((self.num,), device=self.device)
+            self._t = th.zeros((self.num,), device=self.device) if t is None else t
+            if motor_omega is not None and motor_omega.min()<=149:
+                test = 1
         else:
             self._position[:, indices] = th.zeros((3, len(indices)), device=self.device) if pos is None else pos.T
             self._orientation[indices] = Quaternion(num=len(indices), device=self.device) if ori is None else Quaternion(*ori.T)
@@ -139,15 +145,8 @@ class Dynamics:
             self._angular_velocity[:, indices] = th.zeros((3, len(indices)), device=self.device) if ori_vel is None else ori_vel.T
             self._motor_omega[:, indices] = th.ones((4, len(indices)), device=self.device) * self._bd_rotor_omega.min if motor_omega is None else motor_omega.T
             self._thrusts[:, indices] = th.ones((4, len(indices)), device=self.device) * self._bd_thrust.min if thrusts is None else thrusts.T
-            self._t[indices] = th.zeros((len(indices),), device=self.device)
+            self._t[indices] = th.zeros((len(indices),), device=self.device) if t is None else t
         return self.state
-
-    # def get_pose(self):  # 通常用于表示某个方法在子类中应该被覆盖实现，而当前类中还没有具体实现
-    #     raise NotImplementedError
-    #
-    # def _debug_de_normalize(self, command):
-    #     command = self._de_normalize(command)
-    #     return command
 
     def step(self, action) -> Tuple[th.Tensor, th.Tensor]:
         command = self._de_normalize(action.to(self.device))
@@ -161,7 +160,7 @@ class Dynamics:
             # compute linear acceleration and body torque
             acceleration = self._orientation.rotate(
                 z * force_torque[0] -
-                self._drag_coeffs * (self._orientation.inv_rotate(self._velocity - 0) ** 2)
+                self._drag_coeffs * (self._orientation.inv_rotate(self._velocity - 0).pow(2))
             ) / self.m + g
             # acceleration = self._orientation.rotate(z * force_torque[0]) / self.m + g
 
@@ -185,7 +184,14 @@ class Dynamics:
             self._orientation = self._orientation.normalize()
         self._t += self.ctrl_dt
 
+        # self._ugly_fix()
+
         return self.state
+
+    def _ugly_fix(self):
+        self._position = self._position.clamp(-20, 30)
+        self._velocity = self._velocity.clamp(-10, 10)
+        self._angular_velocity = self._angular_velocity.clamp(-10, 10)
 
     def _get_thrust_from_cmd(self, command) -> th.Tensor:
         """_summary_
@@ -284,14 +290,15 @@ class Dynamics:
         Returns:
             _type_: _description_
         """
-        motor_omega_des = self._compute_rotor_omega(thrusts_des)
-        assert (motor_omega_des <= self._bd_rotor_omega.max).all()  # debug
+        if self._ctrl_delay:
+            motor_omega_des = self._compute_rotor_omega(thrusts_des)
 
-        # simulate motors as a first-order system
-        self._motor_omega = self._c * self._motor_omega + (1 - self._c) * motor_omega_des
+            # simulate motors as a first-order system
+            self._motor_omega = self._c * self._motor_omega + (1 - self._c) * motor_omega_des
 
-        self._thrusts = self._compute_thrust(self._motor_omega)
-        assert (self._thrusts <= self._bd_thrust.max).all()  # debug
+            self._thrusts = self._compute_thrust(self._motor_omega)
+        else:
+            self._thrusts = thrusts_des
 
         return self._thrusts
 
@@ -304,7 +311,7 @@ class Dynamics:
             _type_: _description_
         """
         _thrusts = (
-                self._thrust_map[0] * _motor_omega ** 2
+                (self._thrust_map[0] * _motor_omega).pow(2)
                 + self._thrust_map[1] * _motor_omega
                 + self._thrust_map[2]
         )
@@ -322,7 +329,7 @@ class Dynamics:
         omega = scale * (
                 -self._thrust_map[1]
                 + th.sqrt(
-                    self._thrust_map[1] ** 2
+                    self._thrust_map[1].pow(2)
                     - 4 * self._thrust_map[0] * (self._thrust_map[2] - _thrusts)
                 )
         )
@@ -555,6 +562,7 @@ class Dynamics:
             self.velocity,
             self.angular_velocity,
             self.motor_omega,
-            self.thrusts
+            self.thrusts,
+            self.t.unsqueeze(1),
         ]
         )

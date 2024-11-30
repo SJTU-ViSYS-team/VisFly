@@ -339,6 +339,8 @@ class ChildrenPathDataset(Dataset):
             elif "mp3d" in self.root_path.lower():
                 glb_files = [glb_file[:-13]+".glb" for glb_file in glb_files]
 
+        if len(glb_files) == 0:
+            raise FileNotFoundError(f"No files found in the path:{self.root_path}")
         return glb_files
 
     def __len__(self):

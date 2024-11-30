@@ -12,6 +12,17 @@ from .FigFashion.FigFashion import FigFon
 FigFon.set_fashion("IEEE")
 
 
+def create_movement_image(images):
+    """
+    create movement images by merging images
+    """
+    image = []
+    for i in range(len(images)):
+        if i == 0:
+            image = images[i]
+        else:
+            image = np.hstack((image, images[i]))
+    return image
 class TestBase:
     def __init__(
             self,
@@ -21,10 +32,13 @@ class TestBase:
 
     ):
         self.save_path = os.path.join(save_path, name) if save_path is not None else os.path.dirname(os.path.abspath(sys.argv[0])) + "/saved/test/" + name
+        if self.save_path.endswith((".zip", ".rar", ".pth")):
+            self.save_path = self.save_path[:-4]
         self.model = model
         self.name = name
 
         self.obs_all = []
+        self.state_all = []
         self.info_all = []
         self.action_all = []
         self.collision_all = []
@@ -53,6 +67,7 @@ class TestBase:
         obs = self.model.env.reset()
         self._img_names = [name for name in obs.keys() if (("color" in name) or ("depth" in name) or ("semantic" in name))]
         self.obs_all.append(obs)
+        self.state_all.append(self.model.env.state)
         self.info_all.append([{} for _ in range(self.model.env.num_envs)])
         self.t.append(self.model.env.t.clone())
         self.collision_all.append({"col_dis": self.model.env.collision_dis,
@@ -67,17 +82,19 @@ class TestBase:
                 self.model.env.step(action, is_test=True)
                 obs, reward, done, info = self.model.env.get_observation(), self.model.env.reward, self.model.env.done, self.model.env.info
                 col_dis, is_col, col_pt = self.model.env.collision_dis, self.model.env.is_collision, self.model.env.collision_point
+                state = self.model.env.state
                 self.collision_all.append({"col_dis": col_dis, "is_col": is_col, "col_pt": col_pt})
 
             self.reward_all.append(reward)
             self.action_all.append(action)
+            self.state_all.append(state)
             self.obs_all.append(obs)
             self.info_all.append(copy.deepcopy(info))
             self.t.append(self.model.env.t.clone())
             if is_render:
                 render_image = cv2.cvtColor(self.model.env.render(render_kwargs)[0], cv2.COLOR_RGBA2RGB)
                 self.render_image_all.append(render_image)
-            done_all[done] = True
+            done_all[done.to(th.bool)] = True
             if done_all.all():
                 break
 
@@ -118,32 +135,35 @@ class TestBase:
 
     def save_fig(self, fig, path=None, c=""):
         path = path if path is not None else self.save_path
-        if not os.path.exists(os.path.dirname(path)):
-            os.makedirs(os.path.dirname(path))
-        fig.savefig(f"{path}_{c}.png")
-        print(f"fig saved in {path}_{c}.png")
+        if not os.path.exists(path):
+            os.makedirs(path)
+        fig.savefig(f"{path}/{c}.png")
+        print(f"fig saved in {path}/{c}.png")
 
     def save_video(self, is_sub_video=False):
         height, width, layers = self.render_image_all[0].shape
         names = self.name if self.name is not None else "video"
 
-        if not os.path.exists(os.path.dirname(self.save_path)):
-            os.makedirs(os.path.dirname(self.save_path))
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
+
+        if not os.path.exists(f"{self.save_path}/cache"):
+            os.makedirs(f"{self.save_path}/cache")
 
         # render video
-        path = f"{self.save_path}.avi"
-        video = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'DIVX'), 30, (width, height))
+        path = f"{self.save_path}/video.mp4"
+        video = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (width, height))
         # obs video
         path_obs = []
         video_obs = []
         if is_sub_video:
             for name in self._img_names:
-                path_obs.append(f"{self.save_path}_{name}.avi")
+                path_obs.append(f"{self.save_path}_{name}.mp4")
                 width, height = self.obs_all[0][name].shape[3]*self.obs_all[0][name].shape[0], self.obs_all[0][name].shape[2]
-                video_obs.append(cv2.VideoWriter(path_obs[-1], cv2.VideoWriter_fourcc(*'DIVX'), 30, (width, height)))
+                video_obs.append(cv2.VideoWriter(path_obs[-1], cv2.VideoWriter_fourcc(*'mp4v'), 30, (width, height)))
 
         # 将图片写入视频
-        for image, t, obs in zip(self.render_image_all, self.t, self.obs_all):
+        for index, (image, t, obs) in enumerate(zip(self.render_image_all, self.t, self.obs_all)):
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
             video.write(image)
             if is_sub_video:
@@ -160,7 +180,9 @@ class TestBase:
                         # img = (cv2.cvtColor(img, cv2.COLOR_RGB2BGR)).astype(np.uint8)
                         video_obs[i].write(img)
 
-        cv2.imwrite(f"{self.save_path}_render.jpg", image)
+            # save image in cache
+            # if index % 4 == 0:
+            #     cv2.imwrite(f"{self.save_path}/cache/raw_{index}.jpg", image)
 
         video.release()
         if is_sub_video:

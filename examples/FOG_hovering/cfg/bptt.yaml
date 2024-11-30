@@ -1,0 +1,57 @@
+algorithm:
+  policy: MultiInputPolicy
+  policy_kwargs:
+    features_extractor_class: StateExtractor
+    features_extractor_kwargs:
+      net_arch:
+        state:
+          mlp_layer: [192]
+
+    net_arch:
+      pi: [192, 96]
+      qf: [192, 96]
+    activation_fn: relu
+    optimizer_kwargs:
+      weight_decay: 0.00001
+    share_features_extractor: False
+  learning_rate: 0.0001
+  horizon: 256
+  tau: 0.005
+  gamma: 0.99
+  device: cuda
+  batch_size: 10000
+
+env:
+  num_agent_per_scene: 100
+  max_episode_steps: 256
+  scene_kwargs:
+    path: VisFly/datasets/spy_datasets/configs/garage_empty
+  visual: False
+  device: cpu
+
+learn:
+  total_timesteps: 4000000
+
+eval_env:
+  num_agent_per_scene: 4
+  max_episode_steps: 256
+  visual: True
+  sensor_kwargs: []
+  scene_kwargs:
+    path: VisFly/datasets/spy_datasets/configs/garage_empty
+    render_settings:
+      mode: fix
+      view: custom
+      resolution: [1080,1920]
+      position: [[7., 6.8, 5.5], [7, 4.8, 4.5]]
+      trajectory: True
+
+test:
+  is_fig: True
+  is_fig_save: True
+  is_render: True
+  is_video: True
+  is_video_save: True
+  render_kwargs: {}
+
+
