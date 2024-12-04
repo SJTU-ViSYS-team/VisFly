@@ -158,7 +158,7 @@ class TestBase:
         video_obs = []
         if is_sub_video:
             for name in self._img_names:
-                path_obs.append(f"{self.save_path}_{name}.mp4")
+                path_obs.append(f"{self.save_path}/{name}.mp4")
                 width, height = self.obs_all[0][name].shape[3]*self.obs_all[0][name].shape[0], self.obs_all[0][name].shape[2]
                 video_obs.append(cv2.VideoWriter(path_obs[-1], cv2.VideoWriter_fourcc(*'mp4v'), 30, (width, height)))
 

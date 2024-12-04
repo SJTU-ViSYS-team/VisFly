@@ -1,5 +1,5 @@
 # Introduction
-VisFly is a versatile quadrotor simulator specialized for **visual-based** flight. 
+VisFly is a versatile quadrotor simulator specialized for **visual-based** flight using differentiable simulation. 
 As we all know, because of the high requirement of hardware for rendering the vision, the shortage of data is one significant limitations that hinder the development of intelligent drone. 
 And this simulator is proposed to handle this issue. 
 
@@ -11,8 +11,8 @@ We hope you can find anything you want to customize your own environment with mi
 This simulator contains differentiable dynamics modelling, 
 which is considered as a promising research direction in the future. 
 ~~We have reserved the interface and will release it in our following research.~~ 
-Now we have release one hovering task instance in `/example` trained via Back-propagation-through-time (**BPTT**) using differentiable simulation (analytical gradient). 
-More tasks involves **BPTT** could be found in this repository, which is one of our following research [Amended BPTT](https://github.com/Fanxing-LI/ABPT).
+Now we have release one **Hovering** task instance in `/example` trained via Back-propagation-through-time (**BPTT**) using differentiable simulation (analytical gradient). 
+More tasks (**Tracking**, **Landing**, **Racing**)  involves **BPTT** could be found in this repository, which is one of our following research [Amended BPTT](https://github.com/Fanxing-LI/ABPT).
 
 We will keep updating this project for more usages.
 
@@ -113,6 +113,7 @@ env = NavigationEnv(
         "dt": 0.0025,  # simulation interval
         "ctrl_dt": 0.02,  # control interval
         "integrator": "euler",  # assert Integrator in ["euler", "rk4"]
+        "ctrl_delay": True, # whether considering the control delay over time
     },
     scene_kwargs={
         "path": "data/scene_datasets/habitat-test-scenes/skokloster-castle.glb",  # datasets path

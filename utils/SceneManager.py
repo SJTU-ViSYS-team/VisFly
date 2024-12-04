@@ -306,11 +306,6 @@ class SceneManager(ABC):
         drone_id = 0
         for scene_id in range(self.num_scene):
             for agent_id in range(self.num_agent_per_scene):
-                # self.agents[scene_id][agent_id].set_state(
-                #     habitat_sim.AgentState(
-                #         position=hab_pos[drone_id], rotation=quaternion.from_float_array(hab_ori[drone_id])
-                #     )
-                # )
                 self.agents[scene_id][agent_id].scene_node.translation = hab_pos[drone_id]
                 self.agents[scene_id][agent_id].scene_node.rotation = mn.Quaternion(mn.Vector3(hab_ori[drone_id][1:]), hab_ori[drone_id][0])
 
@@ -321,9 +316,14 @@ class SceneManager(ABC):
                 if self.is_multi_drone:
                     self._objects[scene_id][agent_id].root_scene_node.transformation = \
                         self.agents[scene_id][agent_id].scene_node.transformation
-                    # self._objects[scene_id][agent_id].scene_node.translation = hab_pos[drone_id]
-                    # self._objects[scene_id][agent_id].scene_node.rotation = mn.Quaternion(mn.Vector3(hab_ori[drone_id][1:]), hab_ori[drone_id][0])
         self._update_collision_infos()
+
+        if self._obj_mgrs is not None:
+            # set the pose of objects or agents in the scene
+            for scene_id in range(self.num_scene):
+                for agent_id in range(self.num_agent_per_scene):
+                    self._objects[scene_id][agent_id].root_scene_node.transformation = \
+                        self.agents[scene_id][agent_id].scene_node.transformation
 
     def get_observation(self, indices: Optional[int] = None):
         """_summary_
@@ -433,12 +433,17 @@ class SceneManager(ABC):
             points: Optional[Tensor] = None,
             lines: Optional[Tensor] = None,
             curves: Optional[Tensor] = None,
-            c_curves: Optional[Tensor] = None,
     ):
         """
         ender and observe the movement of agents
 
         Args:
+            is_draw_axes (bool, optional): whether draw ground axes. Defaults to False.
+            points (Tensor, optional): draw points for debug. Defaults to None.
+            lines (Tensor, optional): draw straight line for debug. Defaults to None.
+            curves (Tensor, optional): draw curves for debug. Defaults to None.
+
+
 
         Raises:
             ValueError: _description_
@@ -491,14 +496,10 @@ class SceneManager(ABC):
                 self._line_renders[0].draw_path_with_endpoint_circles(
                     curve, 0.1, white)
 
-        # set the pose of objects or agents in the scene
-        for scene_id in range(self.num_scene):
-            for agent_id in range(self.num_agent_per_scene):
-                self._objects[scene_id][agent_id].root_scene_node.transformation = \
-                    self.agents[scene_id][agent_id].scene_node.transformation
+
 
         # draw the axes of agents
-        if self.render_settings["axes"]:
+        if self.render_settings["axes"] or is_draw_axes:
             for scene_id in range(self.num_scene):
                 for agent_id in range(self.num_agent_per_scene):
                     # self._line_renders[scene_id].push_transform(self.agents[scene_id][agent_id].scene_node.transformation)
@@ -880,64 +881,6 @@ class SceneManager(ABC):
 
     @property
     def collision_point(self):
-        raise NotImplementedError
         return self._collision_point
 
-
-def debug_get_test_path():
-    delta_pos, delta_ori, delta_ori_euler = (
-        np.empty([0, 3]),
-        np.empty([0, 4]),
-        np.empty([0, 3]),
-    )
-    point0 = np.array([0, 0, 0])
-    point1 = np.array([1, 0, -2])
-    point2 = np.array([1, 2, 0])
-    point3 = np.array([0, 2, 2])
-    point4 = np.array([0, 0, 0])
-    points = np.vstack([point0, point1, point2, point3, point4])
-    step = 1000
-    for i in range(len(points)):
-        if i != len(points) - 1:
-            delta_pos = np.vstack(
-                [delta_pos, np.linspace(points[i], points[i + 1], step)]
-            )
-
-    delta_ori_euler = np.vstack(
-        # [delta_ori_euler, np.linspace(np.array([0, 0, 0]), np.array([0, 0, np.pi * 2]), step)]
-        [delta_ori_euler, np.linspace(np.array([0, 0, 0]), np.array([0, 0, np.pi * 0]), step)]
-
-    )
-    delta_ori_euler = np.vstack(
-        [
-            delta_ori_euler,
-            # np.linspace(np.array([np.pi / 2, 0, 0]), np.array([np.pi / 2, np.pi * 2, 0]), step),
-            np.linspace(np.array([np.pi / 2, 0, 0]), np.array([np.pi / 2, np.pi * 2 * 0, 0]), step),
-        ]
-    )
-    delta_ori_euler = np.vstack(
-        [
-            delta_ori_euler,
-            # np.linspace(np.array([np.pi, 0, 0]), np.array([3 * np.pi, 0, np.pi * 2]), step),
-            np.linspace(np.array([np.pi, 0, 0]), np.array([np.pi, 0, 0]), step),
-
-        ]
-    )
-    delta_ori_euler = np.vstack(
-        [
-            delta_ori_euler,
-            np.linspace(np.array([3 * np.pi / 2, 0, 0]), np.array([3 * np.pi / 2, 0, 0]), step),
-        ]
-    )
-    delta_ori = R.from_euler("zyx", delta_ori_euler).as_quat()
-    delta_ori = delta_ori[:, [3, 0, 1, 2]]
-
-    # step *= 4
-    # x = np.linspace(0, 2 * np.pi, step)
-    # delta_pos = np.vstack([np.sin(x), np.cos(x), -np.sin(x)]).T
-    # delta_ori_euler = np.vstack([x + np.pi / 2 * 3, np.zeros_like(x), np.zeros_like(x)]).T
-    # delta_ori = R.from_euler("zyx", delta_ori_euler).as_quat()
-    # delta_ori = delta_ori[:, [3, 0, 1, 2]]
-
-    return delta_pos, delta_ori
 

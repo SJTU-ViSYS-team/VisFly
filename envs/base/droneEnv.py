@@ -360,10 +360,10 @@ class DroneEnvsBase:
         self.dynamics.close()
         self.sceneManager.close() if self.visual else None
 
-    def render(self, render_kwargs={}):
+    def render(self, **kwargs):
         if not self.visual:
             raise ValueError("The environment is not visually available.")
-        obs = self.sceneManager.render(**render_kwargs) if self.visual else None
+        obs = self.sceneManager.render(**kwargs) if self.visual else None
         return obs
 
     def _find_paths(self, target: th.Tensor, indices=None):

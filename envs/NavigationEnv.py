@@ -24,7 +24,7 @@ class NavigationEnv(DroneGymEnvsBase):
             random_kwargs: dict = {},
             dynamics_kwargs: dict = {},
             scene_kwargs: dict = {},
-            sensor_kwargs: list = [],
+            sensor_kwargs: list = None,
             device: str = "cpu",
             target: Optional[th.Tensor] = None,
             max_episode_steps: int = 256,
@@ -34,7 +34,7 @@ class NavigationEnv(DroneGymEnvsBase):
             "sensor_type": SensorType.DEPTH,
             "uuid": "depth",
             "resolution": [64, 64],
-        }]
+        }] if sensor_kwargs is None else sensor_kwargs
 
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
@@ -105,7 +105,7 @@ class NavigationEnv2(NavigationEnv):
             random_kwargs: dict = {},
             dynamics_kwargs: dict = {},
             scene_kwargs: dict = {},
-            sensor_kwargs: list = [],
+            sensor_kwargs: list = None,
             device: str = "cpu",
             target: Optional[th.Tensor] = None,
             max_episode_steps: int = 256,
@@ -115,7 +115,7 @@ class NavigationEnv2(NavigationEnv):
             "sensor_type": SensorType.DEPTH,
             "uuid": "depth",
             "resolution": [64, 64],
-        }]
+        }] if sensor_kwargs is None else sensor_kwargs
 
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,

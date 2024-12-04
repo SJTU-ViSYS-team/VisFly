@@ -272,8 +272,8 @@ class DroneGymEnvsBase(VecEnv):
         if self._done.any():
             self.reset_by_id(th.where(self._done)[0])
 
-    def render(self, render_kwargs={}):
-        obs = self.envs.render(render_kwargs)
+    def render(self, **kwargs):
+        obs = self.envs.render(**kwargs)
         return obs
 
     def get_done(self):
