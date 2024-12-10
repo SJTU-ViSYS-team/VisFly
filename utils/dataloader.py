@@ -1,7 +1,6 @@
 from PIL import Image
-import torch as tr
+import torch as th
 import random
-import torch
 from torchvision import datasets, transforms
 
 
@@ -11,7 +10,8 @@ class SimpleDataLoader:
         self.paths = dataset.paths
         self.batch_size = batch_size
         self.shuffle = shuffle
-
+        self._current_index = 0
+        self._create_iter_index()
     def __len__(self):
         return len(self.paths)
 
@@ -30,9 +30,15 @@ class SimpleDataLoader:
             self._select_index_batches.append(self._select_index[start:end])
 
     def __iter__(self):
-        self._create_iter_index()
+        # self._create_iter_index()
         self._current_batch_index = 0
         return self
+
+    def next(self, num):
+        indices = (th.arange(num) + self._current_index) % len(self)
+        _select_indices = [self._select_index[i] for i in indices]
+        self._current_index = (self._current_index + self.batch_size) % len(self)
+        return [self.paths[i] for i in _select_indices]
 
     def __next__(self):
         if self._current_batch_index >= self._batches_num:
@@ -41,6 +47,7 @@ class SimpleDataLoader:
         for index in self._select_index_batches[self._current_batch_index]:
             paths_output_list.append(self.paths[index])
         self._current_batch_index += 1
+        self._current_index = (self._current_index + self.batch_size) % len(self)
         return paths_output_list
 
     def _reset(self):

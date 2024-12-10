@@ -143,7 +143,7 @@ class DroneGymEnvsBase(VecEnv):
 
         # update collision, timeout _done
         self._episode_done = self._episode_done | self._success | self._failure | \
-                     self.is_collision
+                             self.is_collision
 
         self._done = self._episode_done | (self._step_count >= self.max_episode_steps)
 
@@ -168,7 +168,7 @@ class DroneGymEnvsBase(VecEnv):
             # analytical gradient RL
             if self._done.any() and not is_test:
                 self.examine()
-            return observations, _reward,_done,  _info
+            return observations, _reward, _done, _info
 
     def collect_info(self, indice, observations):
         _info = {}
@@ -223,6 +223,22 @@ class DroneGymEnvsBase(VecEnv):
 
         self.envs.reset()
         return self.get_observation()
+
+    def reset_env_by_id(self, indices=None):
+        indices = indices if indices is not None else th.arange(self.num_scene).tolist()
+        indices = [indices] if not hasattr(indices, "__iter__") else indices
+        self.envs.reset_scenes(indices)
+        agent_indices = ((np.tile(np.arange(self.num_agent_per_scene), (len(indices), 1))
+                          + (indices * self.num_agent_per_scene)).reshape(-1, 1)).flatten()
+        self._step_count[agent_indices] = 0
+        self._reward[agent_indices] = 0
+        self._rewards[agent_indices] = 0
+        self._done[agent_indices] = False
+        self._episode_done[agent_indices] = False
+        for indice in agent_indices:
+            self._info[indice] = {
+                "TimeLimit.truncated": False,
+            }
 
     def reset_by_id(self, indices=None, state=None, reset_obs=None):
         assert ~(state is None and reset_obs is None) or (state is not None and reset_obs is not None)

@@ -262,6 +262,12 @@ class DroneEnvsBase:
             self.update_observation(indices=indices)
         self.update_collision(indices)
 
+    def reset_scenes(self, indices: Optional[List[int]] = None):
+        agent_indices = ((np.tile(np.arange(self.sceneManager.num_agent_per_scene), (len(indices), 1))
+                    + (indices * self.sceneManager.num_agent_per_scene)).reshape(-1,1)).flatten()
+        self.reset_agents(agent_indices)
+        self.sceneManager.reset_scenes(indices)
+
     def update_observation(self, indices=None):
         if indices is None:
             img_obs = self.sceneManager.get_observation()

@@ -162,7 +162,7 @@ class SceneManager(ABC):
         self._dataLoader = SimpleDataLoader(
             ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=True
         )
-        self._scene_loader = cycle(self._dataLoader)
+        self._scene_loader = self._dataLoader
         self.scenes: List[habitat_sim.scene] = [None for _ in range(num_scene)]
         self.agents: List[List[habitat_sim.agent]] = [[] for _ in range(num_scene)]
 
@@ -684,17 +684,16 @@ class SceneManager(ABC):
         )
         return agent_cfg
 
-    def load_scenes(self):
+    def load_scenes(self, indices=None):
         """
             load scenes and auto switch to next minibatch of scenes
         """
-        scene_paths = next(self._scene_loader)
-        cycle_i = 0
-        while len(scene_paths) < self.num_scene:
-            scene_paths.append(scene_paths[cycle_i])
-            cycle_i += 1
+        indices = indices if indices is not None else np.arange(self.num_scene)
+        indices = [indices] if not hasattr(indices, "__iter__") else indices
+        scene_paths = self._scene_loader.next(len(indices))
 
-        for scene_id, scene_path in enumerate(scene_paths):
+        for scene_id in indices:
+            scene_path = scene_paths[scene_id]
             # if scene is not empty, close it and release resource.
             if self.scenes[scene_id] is not None:
                 self.scenes[scene_id].close()
@@ -810,6 +809,13 @@ class SceneManager(ABC):
                 rotation=quaternion.from_float_array(orientation),
             )
         )
+
+    def reset_scenes(self, indices):
+        """
+        Summary: external interference to reset all the scenes to the initial state
+        """
+        for scene_id in indices:
+            self.scenes[scene_id].reset()
 
     def _load_agents(
             self, num_agent: int
