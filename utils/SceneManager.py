@@ -120,7 +120,7 @@ class SceneManager(ABC):
             uav_radius=0.1,
             sensitive_radius=5,
             semantic=False,
-            is_find_path: bool = False,
+            # is_find_path: bool = False,
             multi_drone: bool = False,
             sensor_settings=None,
             render_settings=None,
@@ -168,16 +168,17 @@ class SceneManager(ABC):
 
         self._scene_bounds = [None for _ in range(num_scene)]
 
-        self.is_find_path = is_find_path
-        if is_find_path:
-            self.path_finders = [PRMPlanner(
-                bounds=((0, 10), (0, 10), (0, 10)),
-                num_samples=500,
-                obstacle_func=lambda point: False,
-            ) for _ in range(num_scene)]
+        # self.is_find_path = is_find_path
+        # if is_find_path:
+        #     self.path_finders = [PRMPlanner(
+        #         bounds=((0, 10), (0, 10), (0, 10)),
+        #         num_samples=500,
+        #         obstacle_func=lambda point: False,
+        #     ) for _ in range(num_scene)]
 
         self.is_multi_drone = multi_drone
 
+        self._obj_mgrs = None
         if multi_drone:
             self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
             self._objects = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
@@ -198,7 +199,7 @@ class SceneManager(ABC):
 
             self._render_camera = [None for _ in range(num_scene)]
             self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
-            self._line_renders: habitat_sim.gfx.DebugLineRender = [None for _ in range(num_scene)]
+            self._line_mgrs: habitat_sim.gfx.DebugLineRender = [None for _ in range(num_scene)]
             self._objects = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
 
         self.trajectory = [[[] for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
@@ -478,14 +479,14 @@ class SceneManager(ABC):
         if points is not None:
             points = std_to_habitat(points, None)[0]
             for indice, point in enumerate(points):
-                self._line_renders[0].draw_circle(
+                self._line_mgrs[0].draw_circle(
                     mn.Vector3(point), radius=0.25, color=ColorSet3[indice]
                 )
 
         if lines is not None:
             for line_id in range(len(lines)):
                 line = std_to_habitat(lines[line_id], None)[0]
-                self._line_renders[0].draw_transformed_line(
+                self._line_mgrs[0].draw_transformed_line(
                     mn.Vector3(line[0]), mn.Vector3(line[1]), ColorSet3[line_id]
                 )
 
@@ -493,7 +494,7 @@ class SceneManager(ABC):
             for curve in curves:
                 curve = std_to_habitat(curve, None)[0]
                 curve = [mn.Vector3(point) for point in curve]
-                self._line_renders[0].draw_path_with_endpoint_circles(
+                self._line_mgrs[0].draw_path_with_endpoint_circles(
                     curve, 0.1, white)
 
 
@@ -503,11 +504,11 @@ class SceneManager(ABC):
             for scene_id in range(self.num_scene):
                 for agent_id in range(self.num_agent_per_scene):
                     # self._line_renders[scene_id].push_transform(self.agents[scene_id][agent_id].scene_node.transformation)
-                    self._line_renders[scene_id].push_transform(
+                    self._line_mgrs[scene_id].push_transform(
                         self._objects[scene_id][agent_id].transformation
                     )
                     draw_axes(self.scenes[scene_id], origin, axis_len=1)
-                    self._line_renders[scene_id].pop_transform()
+                    self._line_mgrs[scene_id].pop_transform()
 
         # draw the trajectory of agents
         if self.render_settings["trajectory"]:
@@ -518,7 +519,7 @@ class SceneManager(ABC):
                     #     self._line_renders[0].draw_path_with_endpoint_circles(
                     #         traj, 0.1, white)
                     for line_id in np.arange(len(self.trajectory[scene_id][agent_id])-1):
-                        self._line_renders[scene_id].draw_transformed_line(
+                        self._line_mgrs[scene_id].draw_transformed_line(
                             self.trajectory[scene_id][agent_id][line_id][:3],
                             self.trajectory[scene_id][agent_id][line_id+1][:3],
                             color_consequence(factor=line_id/10),
@@ -699,11 +700,11 @@ class SceneManager(ABC):
                 self.scenes[scene_id].close()
             self.scenes[scene_id] = self._load_scene(scene_path)
             self._scene_bounds[scene_id] = self.scenes[scene_id].get_active_scene_graph().get_root_node().cumulative_bb
-            if self.is_find_path:
-                self.path_finders[scene_id].bounds = self._scene_bounds[scene_id]
-                self.path_finders[scene_id].scene_id = scene_id
-                self.path_finders[scene_id].obstacle_func = self._
-                self.path_finders[scene_id].pre_plan()
+            # if self.is_find_path:
+            #     self.path_finders[scene_id].bounds = self._scene_bounds[scene_id]
+            #     self.path_finders[scene_id].scene_id = scene_id
+            #     self.path_finders[scene_id].obstacle_func = self._
+            #     self.path_finders[scene_id].pre_plan()
             # get agent handles in each scene
             self.agents[scene_id] = [
                 self.scenes[scene_id].get_agent(agent_id)
@@ -715,8 +716,8 @@ class SceneManager(ABC):
                 self._render_camera[scene_id] = self.scenes[scene_id].get_agent(self.num_agent_per_scene)
                 # create line renders and object managers
                 self._obj_mgrs[scene_id] = self.scenes[scene_id].get_rigid_object_manager()
-                self._line_renders[scene_id] = self.scenes[scene_id].get_debug_line_render()
-                self._line_renders[scene_id].set_line_width(self.render_settings["line_width"])
+                self._line_mgrs[scene_id] = self.scenes[scene_id].get_debug_line_render()
+                self._line_mgrs[scene_id].set_line_width(self.render_settings["line_width"])
                 # create objects in each scene
                 for agent_id in range(self.num_agent_per_scene):
                     self._objects[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(

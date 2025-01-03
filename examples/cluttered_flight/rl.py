@@ -55,7 +55,6 @@ def main():
                             scene_kwargs={
                                 "path": scene_path,
                             },
-                            latent_dim=latent_dim
                             )
 
         if args.weight is not None:

@@ -101,7 +101,6 @@ class RacingEnv(DroneGymEnvsBase):
             scene_kwargs=scene_kwargs,
             device=device,
             max_episode_steps=max_episode_steps,
-            latent_dim=latent_dim,
 
         )
 
@@ -168,18 +167,18 @@ class RacingEnv(DroneGymEnvsBase):
         self._past_targets_num = self._past_targets_num + self._is_pass_next
         return th.zeros((self.num_envs,), dtype=th.bool)
 
-    def reset_by_id(self, indices=None, state=None, reset_obs=None):
-        indices = th.arange(self.num_envs) if indices is None else indices
+    def reset_agent_by_id(self, agent_indices=None, state=None, reset_obs=None):
+        agent_indices = th.arange(self.num_envs) if agent_indices is None else agent_indices
         if reset_obs is not None:
             self._next_target_i = reset_obs["gate"].to(self.device).squeeze()
         else:
-            self._choose_target(indices=indices)
+            self._choose_target(indices=agent_indices)
             # self._next_target_i[indices] = th.zeros((len(indices),), dtype=th.int)
 
-        self._past_targets_num[indices] = th.zeros((len(indices),), dtype=th.int)
-        self._is_pass_next[indices] = th.zeros((len(indices),), dtype=th.bool)
+        self._past_targets_num[agent_indices] = th.zeros((len(agent_indices),), dtype=th.int)
+        self._is_pass_next[agent_indices] = th.zeros((len(agent_indices),), dtype=th.bool)
 
-        obs = super().reset_by_id(indices, state, reset_obs)
+        obs = super().reset_agent_by_id(agent_indices, state, reset_obs)
 
         return obs
 

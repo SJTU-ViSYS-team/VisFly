@@ -58,7 +58,7 @@ class MultiNavigationEnv(MultiDroneGymEnvBase):
             self._paths = [None for _ in range(self.num_envs)]
 
     def reset_by_id(self, indices):
-        obs = super().reset_by_id(indices)
+        obs = super().reset_agent_by_id(indices)
         if self.is_find_path:
             for indice in indices:
                 self._paths[indice] = self.envs.find_path(self.target[indice])

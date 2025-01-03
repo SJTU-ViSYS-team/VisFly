@@ -142,7 +142,7 @@ class TensorDict(dict):
         return self
 
     def as_tensor(self, device=th.device("cpu")):
-        d = {}
+        d = TensorDict({})
         for key, value in self.items():
             d[key] = th.as_tensor(value, device=device)
 
@@ -168,7 +168,7 @@ class TensorDict(dict):
             for x in x_list:
                 cache.append(x[key])
             r[key] = th.stack(cache)
-            r[key] = th.reshape(r[key], (-1, *r[key].shape[2:]))
+            # r[key] = th.reshape(r[key], (-1, *r[key].shape[2:]))
         return r
 
     def numpy(self):

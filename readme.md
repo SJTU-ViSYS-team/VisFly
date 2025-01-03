@@ -194,12 +194,14 @@ All the scenes used in the demo are created via objects in ReplicaCAD datasets.
 
 ## Customize Your Own Environment
 We make `NavigationEnv` as an example to show how to customize your own environment.
+
 ```python
 from envs.droneGymEnv import DroneGymEnvsBase
 from typing import Dict, Optional
 import numpy as np
 import torch as th
 from gym import spaces
+
 
 class NavigationEnv(DroneGymEnvsBase):
     def __init__(
@@ -218,7 +220,6 @@ class NavigationEnv(DroneGymEnvsBase):
             max_episode_steps: int = 256,
             # latent_dim=None,
     ):
-
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
             num_scene=num_scene,
@@ -233,13 +234,13 @@ class NavigationEnv(DroneGymEnvsBase):
             max_episode_steps=max_episode_steps,
             # latent_dim=latent_dim,
         )
-        
+
         # define new variables. In this example, we define a target position for each agent.
         self.target = th.ones((self.num_envs, 1)) @ th.tensor([[9, 0., 1]]) if target is None else target
-        
+
         # add observation space. Any new observation should be added here.
         self.observation_space["target"] = spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)
-        
+
         # other variables
         self.success_radius = 0.5
 
@@ -248,10 +249,9 @@ class NavigationEnv(DroneGymEnvsBase):
             self,
             indices=None
     ) -> Dict:
-        
         # you can pre-process the observation here, like encoding the image using well-trained net or backbone.
         # ...
-        
+
         return {
             "state": self.sensor_obs["IMU"].cpu().clone().numpy(),
             "depth": self.sensor_obs["depth"],
@@ -261,28 +261,32 @@ class NavigationEnv(DroneGymEnvsBase):
     # define success condition
     def get_success(self) -> th.Tensor:
         return (self.position - self.target).norm(dim=1) <= self.success_radius
-    
+
     # define reward function
     def get_reward(self) -> th.Tensor:
         base_r = 0.1
-        pos_factor = -0.1 * 1/9
+        pos_factor = -0.1 * 1 / 9
         reward = (
                 base_r +
-                 (self.position - self.target).norm(dim=1) * pos_factor +
-                 (self.orientation - th.tensor([1, 0, 0, 0])).norm(dim=1) * -0.00001 +
-                 (self.velocity - 0).norm(dim=1) * -0.002 +
-                 (self.angular_velocity - 0).norm(dim=1) * -0.002
-                 + self._success * (self.max_episode_steps - self._step_count) * base_r 
-                 # + 1 / (self.collision_dis + 0.2) * -0.01
-                
+                (self.position - self.target).norm(dim=1) * pos_factor +
+                (self.orientation - th.tensor([1, 0, 0, 0])).norm(dim=1) * -0.00001 +
+                (self.velocity - 0).norm(dim=1) * -0.002 +
+                (self.angular_velocity - 0).norm(dim=1) * -0.002
+                + self._success * (self.max_episode_steps - self._step_count) * base_r
+            # + 1 / (self.collision_dis + 0.2) * -0.01
+
         )
         return reward
 
-    # solely reset each agent
-    def reset_by_id(self, indices=None, state=None, reset_obs=None):
-        super().reset_by_id(indices=None, state=None, reset_obs=None)
+    # reset agents by indices
+    def reset_agent_by_id(self, indices=None, state=None, reset_obs=None):
+        super().reset_agent_by_id(agent_indices=None, state=None, reset_obs=None)
         # if your agent have any new private observation that should be reset. Please add here. RacingEnv.py provides an example.
     
+    # reset scenes by indices
+    def reset_env_by_id(self, scene_indices=None):
+        super().reset_env_by_id(scene_indices=scene_indices)
+        
     # reset all the agents and scenes, noting that here if you have a scene dataset, VisFly will automatically load to other data in this dataset.
     def reset(self, state=None, obs=None):
         super().reset(state=state, obs=obs)
@@ -322,7 +326,7 @@ model = PPO(
                     "stride": [1,1,1],      # the stride of each CNN layer
                     "cnn_bn": False,        # Whether to use batch normalization in the CNN
                     "mlp_layer": [128],     # the MLP layer after the CNN
-                    "bn": False,  # Union[List[Bool], Bool]. The length of list should be equal to the length of net_arch["pi"] if bool. 
+                    "bn": False,  # Union[List[Bool], Bool]. The length of list should be equal to the length of mlp_layer if bool. 
                     "ln": False,  # All the bn and ln input format are consistent with this one.
                 },
                 

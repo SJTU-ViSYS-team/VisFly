@@ -35,16 +35,16 @@ class MlpExtractor2(MlpExtractor):
             input_dim=pi_features_dim,
             layer=net_arch["pi"],
             activation_fn=activation_fn,
-            batch_norm=net_arch.get("pi_bn", False),
-            layer_norm=net_arch.get("pi_ln", False),
+            bn=net_arch.get("pi_bn", False),
+            ln=net_arch.get("pi_ln", False),
             squash_output=net_arch.get("squash_output", False)
         )
         self.value_net = create_mlp(
             input_dim=vf_features_dim,
             layer=net_arch["vf"],
             activation_fn=activation_fn,
-            batch_norm=net_arch.get("vf_bn", False),
-            layer_norm=net_arch.get("vf_ln", False),
+            bn=net_arch.get("vf_bn", False),
+            ln=net_arch.get("vf_ln", False),
             squash_output=net_arch.get("squash_output", False)
         )
 

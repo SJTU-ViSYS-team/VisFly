@@ -26,13 +26,12 @@ class HoverEnv(DroneGymEnvsBase):
             device: str = "cpu",
             target: Optional[th.Tensor] = None,
             max_episode_steps: int = 256,
-            latent_dim=None,
     ):
-        # sensor_kwargs = [{
-        #     "sensor_type": SensorType.DEPTH,
-        #     "uuid": "depth",
-        #     "resolution": [64, 64],
-        # }]
+        sensor_kwargs = [{
+            "sensor_type": SensorType.DEPTH,
+            "uuid": "depth",
+            "resolution": [64, 64],
+        }]
         random_kwargs = {
             "state_generator":
                 {
@@ -61,7 +60,6 @@ class HoverEnv(DroneGymEnvsBase):
             scene_kwargs=scene_kwargs,
             device=device,
             max_episode_steps=max_episode_steps,
-            latent_dim=latent_dim,
 
         )
 
@@ -118,7 +116,6 @@ class HoverEnv2(HoverEnv):
             device: str = "cpu",
             target: Optional[th.Tensor] = None,
             max_episode_steps: int = 256,
-            latent_dim=None,
     ):
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
@@ -133,15 +130,15 @@ class HoverEnv2(HoverEnv):
             device=device,
             max_episode_steps=max_episode_steps,
             target=target,
-            latent_dim=latent_dim
         )
 
     def get_observation(
             self,
             indices=None
     ) -> Dict:
+        dis_scale = (self.target - self.position).norm(dim=1, keepdim=True).detach().clamp_min(self.max_sense_radius)
         state = th.hstack([
-            (self.target - self.position) / self.max_sense_radius,
+            (self.target - self.position) / dis_scale,
             self.orientation,
             self.velocity / 10,
             self.angular_velocity / 10,
@@ -149,6 +146,7 @@ class HoverEnv2(HoverEnv):
 
         return TensorDict({
             "state": state,
+            # "depth": self.sensor_obs["depth"]
         })
 
 

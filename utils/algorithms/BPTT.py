@@ -137,7 +137,7 @@ class BPTT(shac):
                     if pbar.n - previous_step >= self._dump_step:
                         with th.no_grad():
                             eval_info_id_list = [i for i in range(self.num_envs)]
-                            self.eval_env.reset_by_id()
+                            self.eval_env.reset_agent_by_id()
                             obs = self.eval_env.get_observation()
                             while True:
                                 actions, _ = self.policy.actor(obs)
