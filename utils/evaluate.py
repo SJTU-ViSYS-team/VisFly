@@ -64,7 +64,7 @@ class TestBase:
                 raise ValueError("is_video_save must be True if is_video is True")
 
         done_all = th.full((self.model.env.num_envs,), False)
-        obs = self.model.env.reset()
+        obs = self.model.env.reset(is_test=True)
         self._img_names = [name for name in obs.keys() if (("color" in name) or ("depth" in name) or ("semantic" in name))]
         self.obs_all.append(obs)
         self.state_all.append(self.model.env.state)
@@ -75,12 +75,15 @@ class TestBase:
                                    "col_pt": self.model.env.collision_point})
         while True:
             with th.no_grad():
-                action = self.model.policy.predict(obs)
+                action = self.model.predict(obs)
                 if isinstance(action, tuple):
                     action = action[0]
                 # obs, reward, done, info = self.model.env.step(action, is_test=True)
-                self.model.env.step(action, is_test=True)
-                obs, reward, done, info = self.model.env.get_observation(), self.model.env.reward, self.model.env.done, self.model.env.info
+                if hasattr(self.model, "latent_func"):
+                    obs, reward, done, info = self.model.env.step(action, is_test=True, latent_func=self.model.latent_func)
+                else:
+                    obs, reward, done, info = self.model.env.step(action, is_test=True)
+                 # = self.model.env.get_observation(), self.model.env.reward, self.model.env.done, self.model.env.info
                 col_dis, is_col, col_pt = self.model.env.collision_dis, self.model.env.is_collision, self.model.env.collision_point
                 state = self.model.env.state
                 self.collision_all.append({"col_dis": col_dis, "is_col": is_col, "col_pt": col_pt})
@@ -92,9 +95,9 @@ class TestBase:
             self.info_all.append(copy.deepcopy(info))
             self.t.append(self.model.env.t.clone())
             if is_render:
-                render_image = cv2.cvtColor(self.model.env.render(render_kwargs)[0], cv2.COLOR_RGBA2RGB)
+                render_image = cv2.cvtColor(self.model.env.render(**render_kwargs)[0], cv2.COLOR_RGBA2RGB)
                 self.render_image_all.append(render_image)
-            done_all[done.to(th.bool)] = True
+            done_all[done] = True
             if done_all.all():
                 break
 
@@ -152,7 +155,7 @@ class TestBase:
 
         # render video
         path = f"{self.save_path}/video.mp4"
-        video = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (width, height))
+        video = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'mp4v'), int(1/self.model.env.envs.dynamics.dt), (width, height))
         # obs video
         path_obs = []
         video_obs = []
@@ -160,7 +163,7 @@ class TestBase:
             for name in self._img_names:
                 path_obs.append(f"{self.save_path}/{name}.mp4")
                 width, height = self.obs_all[0][name].shape[3]*self.obs_all[0][name].shape[0], self.obs_all[0][name].shape[2]
-                video_obs.append(cv2.VideoWriter(path_obs[-1], cv2.VideoWriter_fourcc(*'mp4v'), 30, (width, height)))
+                video_obs.append(cv2.VideoWriter(path_obs[-1], cv2.VideoWriter_fourcc(*'mp4v'), int(1/self.model.envs.dynamics.dt), (width, height)))
 
         # 将图片写入视频
         for index, (image, t, obs) in enumerate(zip(self.render_image_all, self.t, self.obs_all)):

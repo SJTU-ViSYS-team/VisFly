@@ -7,9 +7,9 @@ import habitat_sim
 import json
 import numpy as np
 import random
-from .common import *
+from VisFly.utils.common import *
 import argparse
-from .common import std_to_habitat
+from VisFly.utils.common import std_to_habitat
 import torch as th
 # --------------------examples---------------------
 # scene json
@@ -77,10 +77,46 @@ empty_scene = {
 class SceneGeneratorSetting:
     object_dense: float
     object_scale: float
+    object_rotate: float
     object_margin: tuple
     light_random: bool
     stage: str
     object_set: str
+
+def fake_rand_distribution(range: np.ndarray, num_of_points: int) -> np.ndarray:
+    """
+    在给定范围内生成均匀分布的伪随机点。
+
+    参数：
+    range (np.ndarray): 形状为(2, 3)的数组，第一行是[x_min, y_min, z_min]，第二行是[x_max, y_max, z_max]。
+    num_of_points (int): 要生成的点数。
+
+    返回：
+    np.ndarray: 形状为(num_of_points, 3)的数组，每个点坐标。
+    """
+    assert range.shape == (2, 3), "Range must be a 2x3 array"
+
+    # 提取每个维度的范围
+    x_min, x_max = range[0, 0], range[1, 0]
+    y_min, y_max = range[0, 1], range[1, 1]
+    z_min, z_max = range[0, 2], range[1, 2]
+
+    # 初始化结果数组
+    points = np.zeros((num_of_points, 3))
+
+    # 对每个维度生成均匀分布的点
+    for i, (min_val, max_val) in enumerate(zip([x_min, y_min, z_min], [x_max, y_max, z_max])):
+        if min_val == max_val:
+            # 固定维度，生成相同值的数组
+            points[:, i] = np.full(num_of_points, min_val)
+        else:
+            # 使用拉丁超立方抽样生成均匀分布的点
+            interval_width = (max_val - min_val) / num_of_points
+            perm = np.random.permutation(num_of_points)
+            offsets = np.random.rand(num_of_points)
+            points[:, i] = min_val + (perm + offsets) * interval_width
+
+    return points
 
 
 class SceneGenerator:
@@ -148,6 +184,8 @@ class SceneGenerator:
             else:
                 if self.setting.stage == "garage":
                     scene_json["default_lighting"] = "lighting/garage_v1_0"
+                # elif self.setting.stage == "box":
+                #     scene_json["default_lighting"] = "lighting/box_v1_0"
                 else:
                     scene_json["default_lighting"] = "default"
 
@@ -155,6 +193,7 @@ class SceneGenerator:
 
             scene_json["object_instances"] = self._create_objects(self.setting.object_dense,
                                                                   self.setting.object_scale,
+                                                                  self.setting.object_rotate,
                                                                   scene_json["user_custom"]["bound"])
 
             # articulated objects
@@ -175,22 +214,24 @@ class SceneGenerator:
         Returns:
             _type_: _description_
         """
-        # scene_json = empty_scene.copy()
-        # scene_json["stage_instance"]["template_name"] = stage_name
-        # scene_save_path = f"{self.save_path}/temp.scene_instance.json"
-        # self._save_json_file(scene_save_path, scene_json)
-        # habitat_sim_cfg = habitat_sim.SimulatorConfiguration()
-        # habitat_sim_cfg.scene_dataset_config_file = "datasets/spy_datasets/replicaCAD.scene_dataset_config.json"
-        # habitat_sim_cfg.enable_physics = False
-        # agent_cfg = habitat_sim.agent.AgentConfiguration()
-        # sim = habitat_sim.Simulator(habitat_sim.Configuration(habitat_sim_cfg,[agent_cfg]))
-        # bb = sim.get_active_scene_graph().get_root_node().cumulative_bb
+        scene_json = empty_scene.copy()
+        scene_json["stage_instance"]["template_name"] = stage_name
+        scene_save_path = f"{self.save_path}/temp.scene_instance.json"
+        self._save_json_file(scene_save_path, scene_json)
+        habitat_sim_cfg = habitat_sim.SimulatorConfiguration()
+        habitat_sim_cfg.scene_dataset_config_file = "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+        habitat_sim_cfg.enable_physics = False
+        agent_cfg = habitat_sim.agent.AgentConfiguration()
+        sim = habitat_sim.Simulator(habitat_sim.Configuration(habitat_sim_cfg,[agent_cfg]))
+        bb = sim.get_active_scene_graph().get_root_node().cumulative_bb
         # sim.close()
         # return [[bb.min[0], bb.min[1], bb.min[2]], [bb.max[0], bb.max[1], bb.max[2]]]
 
         # return [[-7,0, -19],[7,5.5,1]]  # real
         # return ((-7, 7), (0, 5.5), (-18, 1))  # ((min_x, max_x), (min_y, max_y), (min_z, max_z))
         # debug
+        # delete temp file
+        os.remove(scene_save_path)
         return [[0, -7, 0], [18, 7, 5.]]
 
     def _get_stage(self):
@@ -206,8 +247,8 @@ class SceneGenerator:
             pass
         elif self.setting.stage == "garage":
             return "stages/garage_v1"
-        elif self.setting.stage == "box":
-            return "stages/box_v1"
+        elif self.setting.stage == "10plane_wall":
+            return "stages/10plane_wall"
         elif self.setting.stage == "random":
             pass
         else:
@@ -216,6 +257,7 @@ class SceneGenerator:
     def _create_objects(self,
                         density: float,
                         scale_randomness: float,
+                        rotation_randomness: float,
                         bounds: List[List]):
         """_summary_
             create random objects json in scenes.
@@ -234,18 +276,24 @@ class SceneGenerator:
         bounds[:, 0] += np.array([-margin[0][1], margin[1][1]])
         bounds[:, 1] += np.array([margin[0][2], -margin[1][2]])
 
+        if (bounds[1]-bounds[0]==0).any():
+            # 2d
+            no_zero_dim = np.where(bounds[1]-bounds[0]!=0)[0]
+            volume = np.prod(np.abs(bounds[1, no_zero_dim] - bounds[0, no_zero_dim]))
+        else:
+            volume = np.prod(np.abs(bounds[1, :] - bounds[0, :]))
+
         # Determine the number of points to generate based on density and volume of bounds
         std_density_factor = 1
-        volume = np.prod(np.abs(bounds[1,:] - bounds[0, :]))
         num_points = int(volume * density * std_density_factor)
 
         # Generate random positions within bounds
         positions = [np.random.uniform(bounds[0,:], bounds[1,:]) for _ in range(num_points)]
-
+        positions = fake_rand_distribution(bounds, num_points)
         # Generate random orientations (quaternions)
         orientations = []
         for _ in range(num_points):
-            u1, u2, u3 = np.random.random(3)
+            u1, u2, u3 = np.random.random(3) * rotation_randomness
             quat = np.array([
                 np.sqrt(u1) * np.cos(2 * np.pi * u3),
                 np.sqrt(1 - u1) * np.sin(2 * np.pi * u2),
@@ -368,8 +416,10 @@ def parsers():
     parser.add_argument("--generate", "-g", type=int, default=1, help="generate scenes")
     parser.add_argument("--render", "-r", type=int, default=1, help="render scenes")
     parser.add_argument("--quantity", "-q", type=int, default=1, help="generated quantity ")
-    parser.add_argument("--name", "-n", type=str, default="garage_simple", help="name")
+    parser.add_argument("--name", "-n", type=str, default=None, help="name")
     parser.add_argument("--density", "-d", type=float, default=0.25, help="obstacle density")
+    parser.add_argument("--scene", "-s", type=str, default="garage", help="obstacle density")
+
 
     return parser
 
@@ -379,15 +429,16 @@ if __name__ == "__main__":
     g = SceneGenerator(
         path="datasets/spy_datasets",
         num=args.quantity,
-        name=args.name,
+        name=args.name if args.name is not None else args.scene,
         setting=SceneGeneratorSetting(
             object_dense=args.density,
             object_scale=0,
-            object_margin=np.array([[3,0,0],[7,0,1]]),  #  camera coordinate [[back, right, down],[front, left, up]]
+            object_rotate=0,
+            object_margin=np.array([[3,0,0],[7,0,5]]),  #  camera coordinate [[back, right, down],[front, left, up]]
             # object_margin=(0, 0, 0),
             light_random=False,
-            stage="garage",
-            object_set="objects2"
+            stage=args.scene,
+            object_set="objects/pillar"
         )
     )
     if args.generate:

@@ -2,8 +2,11 @@ import os
 import random
 from collections import deque
 
+import cv2
 import numpy as np
 from typing import Optional, Tuple, List, Dict
+
+from matplotlib import pyplot as plt
 from torch import Tensor
 import torch as th
 from .maths import Quaternion
@@ -21,6 +24,48 @@ def obs_list2array(obs_dict: List, row: int, column: int):
         obs_array.append(np.hstack(obs_row))
     return np.vstack(obs_array)
 
+
+def depth2color(depth_image, colormap_type='plasma', custom_colormaps=None, max_depth=10):
+    """
+    Apply different types of colormaps to depth image
+
+    Args:
+        depth_image (numpy.ndarray): Input depth image
+        colormap_type (str): Type of colormap ('jet', 'viridis', 'plasma', 'custom1', 'custom2')
+        custom_colormaps (dict): Dictionary of custom colormaps
+
+    Returns:
+        numpy.ndarray: Colored depth image
+    """
+    # Ensure proper shape
+    if len(depth_image.shape) == 3 and depth_image.shape[2] == 1:
+        depth_image = depth_image.squeeze()
+    else:
+        raise ValueError("Invalid depth image shape. Must be HxW or HxWx1")
+
+    # Normalize depth values
+    depth_normalized = (depth_image / max_depth).clip(max=1.)
+    depth_uint8 = (depth_normalized * 255).astype(np.uint8)
+
+    # OpenCV built-in colormaps
+    cv2_colormaps = {
+        'jet': cv2.COLORMAP_JET,
+        'viridis': cv2.COLORMAP_VIRIDIS,
+        'plasma': cv2.COLORMAP_PLASMA,
+        'magma': cv2.COLORMAP_MAGMA,
+        'turbo': cv2.COLORMAP_TURBO,
+        'rainbow': cv2.COLORMAP_RAINBOW
+    }
+
+    if colormap_type in cv2_colormaps:
+        return cv2.applyColorMap(depth_uint8, cv2_colormaps[colormap_type])
+    elif custom_colormaps and colormap_type in custom_colormaps:
+        # Use matplotlib colormap
+        colored = plt.cm.ScalarMappable(cmap=custom_colormaps[colormap_type])
+        colored_depth = colored.to_rgba(depth_normalized)[:, :, :3]
+        return (colored_depth * 255).astype(np.uint8)
+    else:
+        raise ValueError(f"Unknown colormap type: {colormap_type}")
 
 def depth2rgb(image):
     max_distance = 5.

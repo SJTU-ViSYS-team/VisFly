@@ -9,7 +9,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 import torch as th
 from habitat_sim import SensorType
-from ...utils.type import ACTION_TYPE
+from ...utils.type import ACTION_TYPE, TensorDict
 
 
 class DroneGymEnvsBase(VecEnv):
@@ -133,6 +133,7 @@ class DroneGymEnvsBase(VecEnv):
         self._reward = th.zeros((self.num_agent,))
         self._rewards = th.zeros((self.num_agent,))
         self._action = th.zeros((self.num_agent, 4))
+        self._observations = TensorDict({})
 
         self._success = th.zeros(self.num_agent, dtype=bool)
         self._failure = th.zeros(self.num_agent, dtype=bool)
@@ -145,14 +146,15 @@ class DroneGymEnvsBase(VecEnv):
         # necessary for gym compatibility
         self.render_mode = ["None" for _ in range(self.num_agent)]
 
-    def step(self, _action, is_test=False):
+    def step(self, _action, is_test=False, latent_func=None):
         self._action = _action if isinstance(_action, th.Tensor) else th.as_tensor(_action)
         assert self._action.max() <= 1 and self._action.min() >= -1
         # dot = make_dot(self._action.mean(), "GymEnv")
         # update state and observation and _done
         self.envs.step(self._action)
-
-        observations = self.get_full_observation()
+        self._observations = self.get_observation()
+        if latent_func is not None:
+            self.update_latent(latent_func)
 
         self._step_count += 1
 
@@ -176,7 +178,7 @@ class DroneGymEnvsBase(VecEnv):
             # self._info[indice]["state"]= full_state[indice].cpu().clone().detach().numpy()
             # i don't know why, but whatever this returned info data address should be strictly independent with torch.
             if self._done[indice]:
-                self._info[indice] = self.collect_info(indice, observations)
+                self._info[indice] = self.collect_info(indice, self._observations)
 
 
         # return and auto-reset
@@ -185,12 +187,27 @@ class DroneGymEnvsBase(VecEnv):
         # reset all the dead agents
         if self._done.any() and not is_test:
             self.examine()
-        if not self.requires_grad:
+        if not self.requires_grad or is_test:
             # model free RL
-            return observations, _reward.cpu().numpy(), _done.cpu().numpy(), _info
+            return self._observations.cpu().numpy(), _reward.cpu().numpy(), _done.cpu().numpy(), _info
         else:
             # analytical gradient RL
-            return observations, _reward, _done, _info
+            return self._observations, _reward, _done, _info
+
+    def update_latent(self, latent_func):
+        next_stoch_post, next_deter = latent_func(
+                    action=self._action,
+                    stoch=self.stoch,
+                    deter=self.deter,
+                    deterministic=False,
+                    next_observation=self._observations,
+                    # return_prior=True,
+                )
+        self.deter = next_deter.detach()
+        self.stoch = next_stoch_post.detach()
+        self._observations["deter"] = self.deter
+        self._observations["stoch"] = self.stoch
+
 
     def collect_info(self, indice, observations):
         _info = {}
@@ -242,10 +259,13 @@ class DroneGymEnvsBase(VecEnv):
         self._done = self._done.clone().detach()
         self.latent = self.latent.clone().detach()
 
-    def reset(self, state=None, obs=None):
+    def reset(self, state=None, obs=None, is_test=False):
         self._reset_attr()
         self.envs.reset()
-        return self.get_full_observation()
+        if not self.requires_grad or is_test:
+            return self.get_full_observation().cpu().numpy()
+        else:
+            return self.get_full_observation()
 
     def reset_env_by_id(self, scene_indices=None):
         scene_indices = scene_indices if scene_indices is not None else th.arange(self.num_scene).tolist()

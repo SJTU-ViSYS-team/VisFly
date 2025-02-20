@@ -10,7 +10,7 @@ import torch as th
 from torch import nn
 import numpy as np
 from stable_baselines3.common.policies import ContinuousCritic as NormalContinuousCritic
-
+from copy import deepcopy
 
 class NoActorContinuousCritic(NormalContinuousCritic):
     def __init__(
@@ -121,6 +121,7 @@ class DMPolicy(MTDPolicy):
             bn=bn,
             ln=ln
         )
+        self.actor_target = deepcopy(self.actor)
 
     def make_critic(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> NoActorContinuousCritic:
         critic_kwargs = self._update_features_extractor(self.critic_kwargs, features_extractor)

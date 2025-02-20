@@ -291,6 +291,8 @@ class DroneEnvsBase:
                     if "depth" in sensor_uuid:
                         self._sensor_obs[sensor_uuid][index, :, :, :] = \
                             np.expand_dims(each_agent_obs[sensor_uuid], 0)
+                        # set background (value==0) to 100
+                        self._sensor_obs[sensor_uuid][index, :, :, :][self._sensor_obs[sensor_uuid][index, :, :, :] == 0] = 100
                     elif "color" in sensor_uuid:
                         self._sensor_obs[sensor_uuid][index, :, :, :] = \
                             np.transpose(each_agent_obs[sensor_uuid][..., :3], (2, 0, 1))

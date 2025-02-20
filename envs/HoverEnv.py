@@ -146,7 +146,7 @@ class HoverEnv2(HoverEnv):
 
         return TensorDict({
             "state": state,
-            # "depth": self.sensor_obs["depth"]
+            "depth": th.as_tensor(self.sensor_obs["depth"]/10).clamp(max=1)
         })
 
 

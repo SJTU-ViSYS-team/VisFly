@@ -67,6 +67,14 @@ def _get_conv_output(net, shape):
     return output.numel()
 
 
+def _get_linear_output(net, shape):
+    net.eval()
+    image = th.rand(1, *shape)
+    output = net(image)
+    net.train()
+    return output.numel()
+
+
 def calc_required_input_dim(net, target_output_shape):
     """
     Calculate required input dimensions for a network with only transposed convolutions.
@@ -135,6 +143,10 @@ def create_trans_cnn(
         device: th.device = th.device("cpu")
 
 ) -> nn.Module:
+    kernel_size = [kernel_size] * len(channel) if isinstance(kernel_size, int) else kernel_size
+    stride = [stride] * len(channel) if isinstance(stride, int) else stride
+    padding = [padding] * len(channel) if isinstance(padding, int) else padding
+
     assert len(kernel_size) == len(stride) == len(padding) == len(channel), \
         "The length of kernel_size, stride, padding and net_arch should be the same."
 
@@ -158,7 +170,7 @@ def create_trans_cnn(
         # modules.append(nn.MaxPool2d(kernel_size=2, stride=2))
 
     if output_channel is not None:
-        modules.append(nn.ConvTranspose2d(prev_channel, output_channel, kernel_size=kernel_size, stride=stride, padding=padding))
+        modules.append(nn.ConvTranspose2d(prev_channel, output_channel, kernel_size=kernel_size[-1], stride=stride[-1], padding=padding[-1]))
 
     if squash_output:
         modules.append(nn.Tanh())
@@ -184,8 +196,12 @@ def create_cnn(
         device: th.device = th.device("cpu")
 
 ) -> nn.Module:
-    # assert len(kernel_size) == len(stride) == len(padding) == len(channel), \
-    #     "The length of kernel_size, stride, padding and net_arch should be the same."
+    kernel_size = [kernel_size] * len(channel) if isinstance(kernel_size, int) else kernel_size
+    stride = [stride] * len(channel) if isinstance(stride, int) else stride
+    padding = [padding] * len(channel) if isinstance(padding, int) else padding
+
+    assert len(kernel_size) == len(stride) == len(padding) == len(channel), \
+        "The length of kernel_size, stride, padding and net_arch should be the same."
 
     prev_channel = input_channels
     modules = []
@@ -202,7 +218,7 @@ def create_cnn(
             modules.append(nn.MaxPool2d(kernel_size=max_pool, stride=2))
 
     if output_channel is not None:
-        modules.append(nn.Conv2d(prev_channel, output_channel, kernel_size=kernel_size, stride=stride, padding=padding))
+        modules.append(nn.Conv2d(prev_channel, output_channel, kernel_size=kernel_size[-1], stride=stride[-1], padding=padding[-1]))
 
     modules.append(nn.Flatten())
 
@@ -308,15 +324,17 @@ def set_mlp_feature_extractor(cls, name, observation_space, net_arch, activation
         input_dim = observation_space
     # input_dim = observation_space.shape[0] if len(observation_space.shape) == 1 else observation_space.shape[1]
 
-    setattr(cls, name + "_extractor",
-            create_mlp(
-                input_dim=input_dim,
-                layer=net_arch.get("layer", []),
-                activation_fn=activation_fn,
-                bn=net_arch.get("bn", False),
-                ln=net_arch.get("ln", False)
-            )
-            )
+    net = create_mlp(
+        input_dim=input_dim,
+        layer=net_arch.get("layer", []),
+        activation_fn=activation_fn,
+        bn=net_arch.get("bn", False),
+        ln=net_arch.get("ln", False)
+    )
+    setattr(cls, name + "_extractor", net)
+    cls._extract_names.append(name)
+
+    features_dim = _get_linear_output(net, observation_space.shape)
     return features_dim
 
 
@@ -328,6 +346,7 @@ def set_trans_cnn_feature_extractor(cls, name, input_dim, target_shape, net_arch
     required_input_dim = calc_required_input_dim(net, target_shape)
     flatten_dim = th.prod(th.as_tensor(required_input_dim))
     modules = [nn.Linear(input_dim, flatten_dim), net]
+    cls._extract_names.append(name)
     setattr(cls, name + "_decoder", nn.Sequential(*modules))
 
 
@@ -408,7 +427,7 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
                                        )
                                        )
     setattr(cls, name + "_extractor", image_extractor)
-    cls._image_extractor_names.append(name + "_extractor")
+    cls._extract_names.append(name)
     return _get_conv_output(image_extractor, observation_space.shape)
 
 
@@ -485,7 +504,7 @@ class ImageExtractor(CustomBaseFeaturesExtractor):
     def _build(self, observation_space, net_arch, activation_fn):
         # 处理image的卷积层
         _image_features_dims = []
-        self._image_extractor_names = []
+        self._extract_names = []
         for key in observation_space.keys():
             if "semantic" in key or "color" in key or "depth" in key:
                 _image_features_dims.append(
@@ -495,8 +514,8 @@ class ImageExtractor(CustomBaseFeaturesExtractor):
 
     def extract(self, observations) -> th.Tensor:
         features = []
-        for name in self._image_extractor_names:
-            x = getattr(self, name)(observations[name.split("_")[0]])
+        for name in self._extract_names:
+            x = getattr(self, name + "_extractor")(observations[name])
             features.append(x)
         combined_features = th.cat(features, dim=1)
 

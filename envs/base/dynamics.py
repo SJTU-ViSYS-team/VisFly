@@ -151,7 +151,7 @@ class Dynamics:
     def step(self, action) -> Tuple[th.Tensor, th.Tensor]:
         command = self._de_normalize(action.to(self.device))
         thrust_des = self._get_thrust_from_cmd(command)
-        assert (thrust_des <= self._bd_thrust.max).all()  # debug
+        assert (thrust_des <= self._bd_thrust.max).all() # debug
 
         for _ in range(self._interval_steps):
             self._run_motors(thrust_des)
@@ -392,7 +392,7 @@ class Dynamics:
         if self.action_type == ACTION_TYPE.BODYRATE:
             if thrust_normalize_method == "medium":
                 # (_, average_)
-                thrust_scale = (self.m * -g[2]) * 2 / self.m
+                thrust_scale = (self.m * -g[2]) * 1 / self.m
                 thrust_bias = (self.m * -g[2]) / self.m
             elif thrust_normalize_method == "max_min":
                 # (min_act, max_act)->(min_thrust, max_thrust) this method try to reach the limit of drone, which is negative for sim2real
@@ -476,14 +476,14 @@ class Dynamics:
 
         if self.action_type == ACTION_TYPE.BODYRATE:
             command = th.hstack([
-                (command[:, :1] * self._normal_params["thrust"].half + self._normal_params["thrust"].mean) * self.m,
+                ((command[:, :1] * self._normal_params["thrust"].half + self._normal_params["thrust"].mean) * self.m).clamp_min(0.),
                 command[:, 1:] * self._normal_params["bodyrate"].half + self._normal_params["bodyrate"].mean
             ]
             )
             return command.T
 
         elif self.action_type == ACTION_TYPE.THRUST:
-            command = self.m * (command * self._normal_params["thrust"].half + self._normal_params["thrust"].mean).T
+            command = (self.m * (command * self._normal_params["thrust"].half + self._normal_params["thrust"].mean).T).clamp_min(0.)
             return command
 
         elif self.action_type == ACTION_TYPE.VELOCITY:

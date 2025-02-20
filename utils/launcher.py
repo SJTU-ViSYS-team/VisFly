@@ -44,8 +44,6 @@ def dl_parser():
     )
     parser.add_argument("-c", "--comment", type=str, default=None, help="add comments")
     parser.add_argument("--log", type=str, default="")
-    parser.add_argument("-m", "--num", type=int, default=100, help="number of agents")
-    parser.add_argument("-hl", "--horizon", type=int, default=40, help="horizon")
     return parser
 
 
@@ -68,7 +66,6 @@ def rl_parser():
     )
     parser.add_argument("-c", "--comment", type=str, default=None, help="add comments")
     parser.add_argument("--log", type=str, default=None)
-    parser.add_argument("-m", "--num", type=int, default=100, help="number of agents")
     parser.add_argument("-s", "--seed", type=int, default=42, help="seed")
 
     return parser
