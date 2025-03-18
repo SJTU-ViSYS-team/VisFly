@@ -11,6 +11,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, Combine
 from typing import List, Optional, Type, Union, Dict
 
 from stable_baselines3.common.type_aliases import Schedule, PyTorchObs
+from torch import Tensor
 from torchvision import models
 
 
@@ -25,6 +26,7 @@ class CustomBaseFeaturesExtractor(BaseFeaturesExtractor):
         self._features_dim = 1
         super(CustomBaseFeaturesExtractor, self).__init__(observation_space, self._features_dim)
         self._is_recurrent = False
+        self._extract_names = []
         # self._build_recurrent()
         self._build(observation_space, net_arch, activation_fn)
         self._build_recurrent(net_arch)
@@ -116,6 +118,19 @@ def calc_required_input_dim(net, target_output_shape):
     return (curr_c, curr_h, curr_w,)
 
 
+class AutoTransDimBatchNorm1d(nn.BatchNorm1d):
+    def __init__(self,*args, **kwargs):
+        super(AutoTransDimBatchNorm1d, self).__init__(*args,**kwargs)
+
+    def forward(self, x: Tensor) -> Tensor:
+        if x.dim() == 3:
+            x = x.permute(1,2,0)
+            output = super().forward(x)
+            return output.permute(2,0,1)
+        else:
+            return super().forward(x)
+
+
 class ImgChLayerNorm(nn.Module):
     def __init__(self, ch, eps=1e-03):
         super(ImgChLayerNorm, self).__init__()
@@ -165,7 +180,7 @@ def create_trans_cnn(
         if bn:
             modules.append(nn.BatchNorm2d(channel[idx]))
         if ln:
-            modules.append(ImgChLayerNorm(channel[idx]))
+            modules.append(ImgChLayerNorm(channel[idx], eps=1e-3))
         modules.append(activation_fn())
         # modules.append(nn.MaxPool2d(kernel_size=2, stride=2))
 
@@ -212,7 +227,7 @@ def create_cnn(
         if bn:
             modules.append(nn.BatchNorm2d(channel[idx]))
         if ln:
-            modules.append(ImgChLayerNorm(channel[idx]))
+            modules.append(ImgChLayerNorm(channel[idx], eps=1e-3))
         modules.append(activation_fn())
         if max_pool > 0:
             modules.append(nn.MaxPool2d(kernel_size=max_pool, stride=2))
@@ -280,9 +295,9 @@ def create_mlp(
         modules.append(nn.Linear(prev_dim, layer[idx], bias=with_bias))
         prev_dim = layer[idx]
         if bn:
-            modules.append(nn.BatchNorm1d(layer[idx]))
+            modules.append(AutoTransDimBatchNorm1d(layer[idx]))
         elif ln:
-            modules.append(nn.LayerNorm(layer[idx]))
+            modules.append(nn.LayerNorm(layer[idx], eps=1e-3))
         modules.append(activation_fn())
 
     if output_dim is not None:
@@ -365,10 +380,8 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
             if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
                 image_extractor.fc = create_mlp(
                     input_dim=image_extractor.fc.in_features,
-                    layer=net_arch.get("layer"),
                     activation_fn=activation_fn,
-                    bn=net_arch.get("bn", False),
-                    ln=net_arch.get("ln", False)
+                    **net_arch
                 )
         elif "efficientnet" in backbone:
             image_extractor.features[0][0] = nn.Conv2d(image_channels, image_extractor.features[0][0].out_channels,
@@ -380,10 +393,8 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
             if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
                 image_extractor.classifier[-1] = create_mlp(
                     input_dim=image_extractor.classifier[-1].in_features,
-                    layer=net_arch.get("layer"),
                     activation_fn=activation_fn,
-                    bn=net_arch.get("bn", False),
-                    ln=net_arch.get("ln", False)
+                    **net_arch
                 )
         elif "mobilenet" in backbone:
             image_extractor.features[0][0] = nn.Conv2d(image_channels, image_extractor.features[0][0].out_channels,
@@ -394,10 +405,8 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
             if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
                 image_extractor.classifier[-1] = create_mlp(
                     input_dim=image_extractor.classifier[-1].in_features,
-                    layer=net_arch.get("layer"),
                     activation_fn=activation_fn,
-                    bn=net_arch.get("bn", False),
-                    ln=net_arch.get("ln", False)
+                    **net_arch
                 )
         else:
             raise ValueError("Backbone not supported.")
@@ -412,7 +421,7 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
                 padding=net_arch.get("padding", [0, 0, 0]),
                 stride=net_arch.get("stride", [1, 1, 1]),
                 bn=net_arch.get("bn", False),
-
+                ln=net_arch.get("ln", False)
             )
         )
         _image_features_dims = _get_conv_output(image_extractor, observation_space.shape)
@@ -657,6 +666,32 @@ class EmptyExtractor(CustomBaseFeaturesExtractor):
     def extract(self, observations) -> th.Tensor:
         return observations
 
+
+class LatentCombineExtractor(nn.Module):
+    def __init__(self, observation_space: spaces.Dict,
+                 net_arch: Optional[Dict] = {},
+                 activation_fn: Type[nn.Module] = nn.ReLU, ):
+        super(LatentCombineExtractor, self).__init__()
+        _features_dim = 0
+        for key in observation_space.keys():
+            _features_dim += observation_space[key].shape[0]
+        self._features_dim = _features_dim
+
+    def _build(self, observation_space, net_arch, activation_fn):
+        pass
+
+    def extract(self, observations) -> th.Tensor:
+        if isinstance(observations, dict):
+            return th.cat([observations["stoch"], observations["deter"]], dim=-1)
+        else:
+            raise NotImplementedError
+
+    @property
+    def features_dim(self):
+        return self._features_dim
+
+    def forward(self, x):
+        return self.extract(x)
 
 class FlexibleMLP(nn.Module):
     extractor_alias: Dict = {

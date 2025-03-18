@@ -5,7 +5,7 @@
     4.5,
     7
   ],
-  "mass": 0.73,
+  "mass": 0.76,
   "drag_coeffs": [
     [
       0.5,
@@ -47,7 +47,7 @@
     "i": 0.01,
     "d": 0.25
   },
-  "arm_length": 0.17,
+  "arm_length": 0.075,
   "kappa": 0.016,
   "motor_omega_max": 3000,
   "motor_omega_min": 150,

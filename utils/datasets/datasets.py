@@ -186,6 +186,8 @@ class SceneGenerator:
                     scene_json["default_lighting"] = "lighting/garage_v1_0"
                 # elif self.setting.stage == "box":
                 #     scene_json["default_lighting"] = "lighting/box_v1_0"
+                elif "10plane" in self.setting.stage:
+                    scene_json["default_lighting"] = "lighting/10plane_0"
                 else:
                     scene_json["default_lighting"] = "default"
 
@@ -203,7 +205,7 @@ class SceneGenerator:
             # save
             self._save_json_file(scene_save_path, scene_json)
         print(f"{self.num} Files has been save in {os.getcwd()}/{self.save_path}" )
-        return  scene_save_paths
+        return scene_save_paths
 
     def _get_stage_bound(self, stage_name, debug_stage=""):
         """_summary_
@@ -214,6 +216,10 @@ class SceneGenerator:
         Returns:
             _type_: _description_
         """
+        if "garage" in stage_name:
+            return [[0, -7, 0], [18, 7, 5.]]
+        elif "10plane_wall" in stage_name:
+            return [[0, -10, 0], [20, 10, 8.]]
         scene_json = empty_scene.copy()
         scene_json["stage_instance"]["template_name"] = stage_name
         scene_save_path = f"{self.save_path}/temp.scene_instance.json"
@@ -224,15 +230,15 @@ class SceneGenerator:
         agent_cfg = habitat_sim.agent.AgentConfiguration()
         sim = habitat_sim.Simulator(habitat_sim.Configuration(habitat_sim_cfg,[agent_cfg]))
         bb = sim.get_active_scene_graph().get_root_node().cumulative_bb
-        # sim.close()
-        # return [[bb.min[0], bb.min[1], bb.min[2]], [bb.max[0], bb.max[1], bb.max[2]]]
+        sim.close()
+        os.remove(scene_save_path)
+        return [[bb.min[2], bb.min[0], bb.min[1]], [bb.max[2], bb.max[0], bb.max[1]]]
 
         # return [[-7,0, -19],[7,5.5,1]]  # real
         # return ((-7, 7), (0, 5.5), (-18, 1))  # ((min_x, max_x), (min_y, max_y), (min_z, max_z))
         # debug
         # delete temp file
-        os.remove(scene_save_path)
-        return [[0, -7, 0], [18, 7, 5.]]
+
 
     def _get_stage(self):
         """_summary_
@@ -426,6 +432,10 @@ def parsers():
 
 if __name__ == "__main__":
     args = parsers().parse_args()
+    if args.scene == "garage":
+        object_margin = np.array([[3,0,0],[7,0,5]])
+    elif args.scene == "10plane_wall":
+        object_margin = np.array([[3,0,0],[3,0,8]])
     g = SceneGenerator(
         path="datasets/spy_datasets",
         num=args.quantity,
@@ -434,7 +444,7 @@ if __name__ == "__main__":
             object_dense=args.density,
             object_scale=0,
             object_rotate=0,
-            object_margin=np.array([[3,0,0],[7,0,5]]),  #  camera coordinate [[back, right, down],[front, left, up]]
+            object_margin=object_margin,  #  camera coordinate [[back, right, down],[front, left, up]]
             # object_margin=(0, 0, 0),
             light_random=False,
             stage=args.scene,

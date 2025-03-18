@@ -1,7 +1,7 @@
 from gymnasium.vector.utils import spaces
 from stable_baselines3.common.preprocessing import get_action_dim
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, FlattenExtractor
-from stable_baselines3.common.type_aliases import Schedule
+from stable_baselines3.common.type_aliases import Schedule, PyTorchObs
 
 from .extractors import create_mlp
 from .td_policies import MTDPolicy, MultiInputPolicy, obs_as_tensor
@@ -11,6 +11,7 @@ from torch import nn
 import numpy as np
 from stable_baselines3.common.policies import ContinuousCritic as NormalContinuousCritic
 from copy import deepcopy
+
 
 class NoActorContinuousCritic(NormalContinuousCritic):
     def __init__(
@@ -73,6 +74,15 @@ class NoActorContinuousCritic(NormalContinuousCritic):
         with th.no_grad():
             features, h = self.extract_features(obs, self.features_extractor)
         return self.q_networks[0](features)
+
+    def extract_features(self, obs: PyTorchObs, features_extractor: BaseFeaturesExtractor) -> th.Tensor:
+        """
+        Preprocess the observation if needed and then compute the features.
+        :param obs: Observation
+        :param features_extractor: Network to extract features
+        :return: Extracted features
+        """
+        return features_extractor(obs)
 
 
 class DMPolicy(MTDPolicy):

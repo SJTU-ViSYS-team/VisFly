@@ -37,7 +37,7 @@ class Dynamics:
 
     ):
         assert action_type in ["bodyrate", "thrust", "velocity", "position"]  # 对两个变量进行断言检查
-        assert ori_output_type in ["quaternion", "euler"]
+        assert ori_output_type in ["quaternion", "euler", "matrix"]
 
         self.device = device
 
@@ -55,11 +55,12 @@ class Dynamics:
 
         # const parameters
         self.action_type = self.action_type_alias[action_type]
-
-        self._is_quat_output = ori_output_type == "quaternion"
+        self.angular_output_type = ori_output_type
+        self.angular_dim = 3 if ori_output_type == "euler" else (4 if ori_output_type == "quaternion" else 6)
+        # self._is_quat_output = ori_output_type == "quaternion"
         self.dt = dt
         self.ctrl_dt = ctrl_dt
-        if not ctrl_dt % dt == 0:
+        if not th.as_tensor(ctrl_dt) % th.as_tensor(dt) == 0:
             raise ValueError("ctrl_dt should be a multiple of dt")
         self._interval_steps = int(ctrl_dt / dt)
         self._integrator = integrator
@@ -70,6 +71,10 @@ class Dynamics:
         self._init()
         self._get_scale_factor(action_space)
         self._set_device(device)
+
+        self._init_thrust = -(self.m * g / 4)[-1]
+        self._init_omega = self._compute_rotor_omega(self._init_thrust)
+        test = 1
 
     def _init(self):
         self.load(os.path.dirname(__file__)+"/../../configs/example.json")
@@ -133,18 +138,18 @@ class Dynamics:
             self._orientation = Quaternion(num=self.num, device=self.device) if ori is None else Quaternion(*ori.T)
             self._velocity = th.zeros((3, self.num), device=self.device) if vel is None else vel.T
             self._angular_velocity = th.zeros((3, self.num), device=self.device) if ori_vel is None else ori_vel.T
-            self._motor_omega = th.ones((4, self.num), device=self.device) * self._bd_rotor_omega.min if motor_omega is None else motor_omega.T
-            self._thrusts = th.ones((4, self.num), device=self.device) * self._bd_thrust.min if thrusts is None else thrusts.T
+            self._motor_omega = th.ones((4, self.num), device=self.device) * self._init_omega if motor_omega is None else motor_omega.T
+            self._thrusts = th.ones((4, self.num), device=self.device) * self._init_thrust if thrusts is None else thrusts.T
             self._t = th.zeros((self.num,), device=self.device) if t is None else t
-            if motor_omega is not None and motor_omega.min()<=149:
-                test = 1
+
+
         else:
             self._position[:, indices] = th.zeros((3, len(indices)), device=self.device) if pos is None else pos.T
             self._orientation[indices] = Quaternion(num=len(indices), device=self.device) if ori is None else Quaternion(*ori.T)
             self._velocity[:, indices] = th.zeros((3, len(indices)), device=self.device) if vel is None else vel.T
             self._angular_velocity[:, indices] = th.zeros((3, len(indices)), device=self.device) if ori_vel is None else ori_vel.T
-            self._motor_omega[:, indices] = th.ones((4, len(indices)), device=self.device) * self._bd_rotor_omega.min if motor_omega is None else motor_omega.T
-            self._thrusts[:, indices] = th.ones((4, len(indices)), device=self.device) * self._bd_thrust.min if thrusts is None else thrusts.T
+            self._motor_omega[:, indices] = th.ones((4, len(indices)), device=self.device) * self._init_omega if motor_omega is None else motor_omega.T
+            self._thrusts[:, indices] = th.ones((4, len(indices)), device=self.device) * self._init_thrust if thrusts is None else thrusts.T
             self._t[indices] = th.zeros((len(indices),), device=self.device) if t is None else t
         return self.state
 
@@ -247,7 +252,7 @@ class Dynamics:
 
                 ang_vel_err[:, i] = (R_des[..., i].T @ R[..., i] @ th.tensor([[0], [0], [yaw_spd_des[i]]]).squeeze() - self._angular_velocity[:,i])
             body_torque_des = self._inertia @ (self._BODYRATE_PID.p @ pose_err + self._BODYRATE_PID.p @ ang_vel_err - cross(self._angular_velocity, self._angular_velocity))
-
+    
             thrusts_des = self._B_allocation_inv @ th.vstack([gross_thrust_des, body_torque_des])
             # raise NotImplementedError
         elif self.action_type == ACTION_TYPE.POSITION:
@@ -311,7 +316,7 @@ class Dynamics:
             _type_: _description_
         """
         _thrusts = (
-                (self._thrust_map[0] * _motor_omega).pow(2)
+                (self._thrust_map[0] * _motor_omega.pow(2))
                 + self._thrust_map[1] * _motor_omega
                 + self._thrust_map[2]
         )
@@ -511,14 +516,16 @@ class Dynamics:
 
     @property
     def orientation(self):
-        if self._is_quat_output:
+        if self.angular_output_type == "quaternion":
             return self._orientation.toTensor().T
-        else:
+        elif self.angular_output_type == "euler":
             return self._orientation.toEuler().T
+        elif self.angular_output_type == "matrix":
+            return self._orientation.xz_axis.T
 
     @property
     def direction(self):
-        return self._orientation.x_axis
+        return self._orientation.x_axis.T
 
     @property
     def velocity(self):
@@ -550,9 +557,9 @@ class Dynamics:
         ]
         )
 
-    @property
-    def is_quat_output(self):
-        return self._is_quat_output
+    def transform_2_local_axes(self, other):
+        assert other.shape[1] == 3
+        return self._orientation.inv_rotate(other.T).T
 
     @property
     def full_state(self):

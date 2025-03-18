@@ -26,6 +26,8 @@ class DroneGymEnvsBase(VecEnv):
             requires_grad: bool = False,
             scene_kwargs: Optional[Dict] = None,
             sensor_kwargs: Optional[List] = None,
+            tensor_output: bool = False,
+            is_train: bool = False
     ):
 
         super(VecEnv, self).__init__()
@@ -84,8 +86,12 @@ class DroneGymEnvsBase(VecEnv):
 
         self.requires_grad = requires_grad
         self.max_sense_radius = 10
+
+        self.tensor_output = tensor_output
+        self.is_train = is_train
+
         # key interference of gym env
-        state_size = 13 if self.envs.dynamics.is_quat_output else 12
+        state_size = 3 + 3+ 3 +(3 if self.envs.dynamics.angular_output_type == "euler" else (4 if self.envs.dynamics.angular_output_type == "quaternion" else 6))
 
         if not visual:
             self.observation_space = spaces.Dict(
@@ -141,6 +147,7 @@ class DroneGymEnvsBase(VecEnv):
         self._done = th.zeros(self.num_agent, dtype=bool)
         self._info = [{"TimeLimit.truncated": False} for _ in range(self.num_agent)]
 
+        self._indiv_rewards = None
         self.max_episode_steps = max_episode_steps
 
         # necessary for gym compatibility
@@ -152,7 +159,7 @@ class DroneGymEnvsBase(VecEnv):
         # dot = make_dot(self._action.mean(), "GymEnv")
         # update state and observation and _done
         self.envs.step(self._action)
-        self._observations = self.get_observation()
+        self._observations = self.get_full_observation()
         if latent_func is not None:
             self.update_latent(latent_func)
 
@@ -163,7 +170,12 @@ class DroneGymEnvsBase(VecEnv):
         self._failure = self.get_failure()
 
         # update _rewards
-        self._reward = self.get_reward()
+        if self._indiv_rewards is None:
+            self._reward = self.get_reward()
+        else:
+            self._reward, indiv_reward = self.get_reward()
+            for key in indiv_reward.keys():
+                self._indiv_rewards[key] += indiv_reward[key]
         self._rewards += self._reward
 
         # update collision, timeout _done
@@ -180,20 +192,22 @@ class DroneGymEnvsBase(VecEnv):
             if self._done[indice]:
                 self._info[indice] = self.collect_info(indice, self._observations)
 
-
         # return and auto-reset
         _done, _reward, _info = self._done.clone(), self._reward.clone(), self._info.copy()
         # _episode_done = self._episode_done.clone()
         # reset all the dead agents
         if self._done.any() and not is_test:
             self.examine()
-        if not self.requires_grad or is_test:
-            # model free RL
-            return self._observations.cpu().numpy(), _reward.cpu().numpy(), _done.cpu().numpy(), _info
-        else:
+        if self.requires_grad:
             # analytical gradient RL
             return self._observations, _reward, _done, _info
+        else:
+            if self.tensor_output:
+                return self._observations.detach(), _reward.detach(), _done, _info
+            else:
+                return self._observations.cpu().numpy(), _reward.cpu().numpy(), _done.cpu().numpy(), _info
 
+    @th.no_grad()
     def update_latent(self, latent_func):
         next_stoch_post, next_deter = latent_func(
                     action=self._action,
@@ -203,8 +217,8 @@ class DroneGymEnvsBase(VecEnv):
                     next_observation=self._observations,
                     # return_prior=True,
                 )
-        self.deter = next_deter.detach()
-        self.stoch = next_stoch_post.detach()
+        self.deter = next_deter.cpu()
+        self.stoch = next_stoch_post.cpu()
         self._observations["deter"] = self.deter
         self._observations["stoch"] = self.stoch
 
@@ -235,13 +249,19 @@ class DroneGymEnvsBase(VecEnv):
         _info["episode"]["extra"] = {}
         _info["episode_done"] = self._episode_done[indice].clone().detach()
 
+        if self._indiv_rewards is not None:
+            for key in self._indiv_rewards.keys():
+                _info["episode"]["extra"][key] = self._indiv_rewards[key][indice].clone().detach()
+
         return _info
 
-    def initialize_latent(self, deter_dim, stoch_dim):
+    def initialize_latent(self, deter_dim, stoch_dim, latent_reset_func=None):
         self.deter = th.zeros((self.num_agent, deter_dim), device=self.device)
         self.stoch = th.zeros((self.num_agent, stoch_dim), device=self.device)
         self.observation_space["deter"] = spaces.Box(low=-np.inf, high=np.inf, shape=(deter_dim,), dtype=np.float32)
         self.observation_space["stoch"] = spaces.Box(low=-np.inf, high=np.inf, shape=(stoch_dim,), dtype=np.float32)
+        if latent_reset_func:
+            setattr(self, "latent_reset_func", latent_reset_func)
 
     def set_latent(self, deter, stoch):
         self.deter = deter
@@ -260,27 +280,43 @@ class DroneGymEnvsBase(VecEnv):
         self.latent = self.latent.clone().detach()
 
     def reset(self, state=None, obs=None, is_test=False):
-        self._reset_attr()
         self.envs.reset()
-        if not self.requires_grad or is_test:
+
+        if isinstance(self.get_reward(), tuple):
+            self._indiv_rewards: dict = self.get_reward()[1]
+            self._indiv_rewards = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
+        else:
+            self._indiv_rewards = None
+
+        self._reset_attr()
+
+        if not self.tensor_output:
             return self.get_full_observation().cpu().numpy()
         else:
             return self.get_full_observation()
 
     def reset_env_by_id(self, scene_indices=None):
+        assert not isinstance(scene_indices, bool)
         scene_indices = scene_indices if scene_indices is not None else th.arange(self.num_scene).tolist()
         scene_indices = [scene_indices] if not hasattr(scene_indices, "__iter__") else scene_indices
         self.envs.reset_scenes(scene_indices)
         agent_indices = ((np.tile(np.arange(self.num_agent_per_scene), (len(scene_indices), 1))
                           + (scene_indices * self.num_agent_per_scene)).reshape(-1, 1)).flatten()
         self._reset_attr(indices=agent_indices)
-        return self.sensor_obs
+        return self._format_obs(self.get_full_observation(agent_indices))
 
     def reset_agent_by_id(self, agent_indices=None, state=None, reset_obs=None):
         assert ~(state is None and reset_obs is None) or (state is not None and reset_obs is not None)
+        assert not isinstance(agent_indices, bool)
         self._reset_attr(indices=agent_indices)
         self.envs.reset_agents(agent_indices, state=state)
-        return self.sensor_obs
+        return self._format_obs(self.get_full_observation(agent_indices))
+
+    def _format_obs(self, obs):
+        if not self.tensor_output:
+            return obs.cpu().numpy()
+        else:
+            return obs
 
     def _reset_attr(self, indices=None):
         if indices is None:
@@ -292,6 +328,9 @@ class DroneGymEnvsBase(VecEnv):
             if self.deter is not None:
                 self.deter = th.zeros_like(self.deter, device=self.device)
                 self.stoch = th.zeros_like(self.stoch, device=self.device)
+            if self._indiv_rewards is not None:
+                for key in self._indiv_rewards.keys():
+                    self._indiv_rewards[key] = th.zeros((self.num_agent,))
         else:
             self._reward[indices] = 0
             self._rewards[indices] = 0
@@ -299,8 +338,15 @@ class DroneGymEnvsBase(VecEnv):
             self._episode_done[indices] = False
             self._step_count[indices] = 0
             if self.deter is not None:
-                self.deter[indices] = 0
-                self.stoch[indices] = 0
+                if hasattr(self, "deter_init_func"):
+                    latent = self.latent_reset_func(len(indices))
+                    self.stoch[indices], self.deter[indices] = latent["stoch"], latent["deter"]
+                else:
+                    self.deter[indices] = 0
+                    self.stoch[indices] = 0
+            if self._indiv_rewards is not None:
+                for key in self._indiv_rewards.keys():
+                    self._indiv_rewards[key][indices] = 0
 
         indices = range(self.num_agent) if indices is None else indices
         for indice in indices:
@@ -308,14 +354,14 @@ class DroneGymEnvsBase(VecEnv):
                 "TimeLimit.truncated": False,
             }
 
-    def stack(self):
-        self._stack_cache = (self._step_count.clone().detach(),
-                             self._reward.clone().detach(),
-                             self._rewards.clone().detach(),
-                             self._done.clone().detach(),
-                             deepcopy(self._info),
-                             )
-        self.envs.stack()
+    # def stack(self):
+    #     self._stack_cache = (self._step_count.clone().detach(),
+    #                          self._reward.clone().detach(),
+    #                          self._rewards.clone().detach(),
+    #                          self._done.clone().detach(),
+    #                          deepcopy(self._info),
+    #                          )
+    #     self.envs.stack()
 
     def recover(self):
         self._step_count, self._reward, self._rewards, self._done, self._info = \
@@ -501,3 +547,6 @@ class DroneGymEnvsBase(VecEnv):
 
     def eval(self):
         self.envs.eval()
+
+    def __len__(self):
+        return self.num_envs

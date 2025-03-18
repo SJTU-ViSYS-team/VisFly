@@ -67,6 +67,12 @@ def rl_parser():
     parser.add_argument("-c", "--comment", type=str, default=None, help="add comments")
     parser.add_argument("--log", type=str, default=None)
     parser.add_argument("-s", "--seed", type=int, default=42, help="seed")
-
+    parser.add_argument("-a", "--algorithm", type=str, default="ppo", help="select the RL algorithm")
+    parser.add_argument(
+        "--env","-e",
+        type=str,
+        default="navigation",
+        help="To train new model or simply test pre-trained model",
+    )
     return parser
 

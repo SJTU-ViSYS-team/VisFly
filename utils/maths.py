@@ -66,7 +66,14 @@ class Quaternion:
 
     @property
     def x_axis(self):
-        return th.stack([1 - 2 * (self.y.pow(2) + self.z.pow(2)), 2 * (self.x * self.y + self.z * self.w), 2 * (self.x * self.z - self.y * self.w)]).T
+        return th.stack([1 - 2 * (self.y.pow(2) + self.z.pow(2)), 2 * (self.x * self.y + self.z * self.w), 2 * (self.x * self.z - self.y * self.w)])
+
+    @property
+    def xz_axis(self):
+        return th.stack([
+            1 - 2 * (self.y.pow(2) + self.z.pow(2)), 2 * (self.x * self.y - self.z * self.w), 2 * (self.x * self.z + self.y * self.w),
+            2 * (self.x * self.z - self.y * self.w), 2 * (self.y * self.z + self.x * self.w), 1 - 2 * (self.x.pow(2) + self.y.pow(2))
+        ])
 
     @property
     def shape(self):

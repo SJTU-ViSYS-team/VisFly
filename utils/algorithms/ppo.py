@@ -988,11 +988,12 @@ class PPO(OnPolicyAlgorithm):
 
 class ppo(PPO):
     def __init__(self, comment="", save_path=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         self.comment = comment
         root = os.path.dirname(os.path.abspath(sys.argv[0]))
         self.save_path = f"{root}/saved" if save_path is None else save_path
         self.policy_save_path = f"{self.save_path}/ppo_{self.comment}" if comment is not None else f"{self.save_path}/ppo"
+        kwargs["tensorboard_log"] = self.save_path
+        super().__init__(*args, **kwargs)
 
 
     def learn(

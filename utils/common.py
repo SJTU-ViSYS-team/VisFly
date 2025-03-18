@@ -1,3 +1,4 @@
+import copy
 import os
 import random
 from collections import deque
@@ -6,6 +7,7 @@ import cv2
 import numpy as np
 from typing import Optional, Tuple, List, Dict
 
+import yaml
 from matplotlib import pyplot as plt
 from torch import Tensor
 import torch as th
@@ -210,3 +212,27 @@ def check(returns, r, dones, dim=0):
     ax1.grid()
     plt.show()
 
+def deep_merge(origin, target):
+    """
+    递归合并字典 `a` 和 `b`，冲突时以 `b` 的值为准。
+    若某个键在 `a` 和 `b` 中对应的值均为字典，则递归合并这两个子字典。
+    """
+    result = copy.deepcopy(origin)
+    for key, target_value in target.items():
+        origin_value = result.get(key, None)
+        if isinstance(origin_value, dict) and isinstance(target_value, dict):
+            # 若双方的值均为字典，则递归合并
+            result[key] = deep_merge(origin_value, target_value)
+
+        else:
+            # 否则直接用 `b` 的值覆盖（深拷贝避免副作用）
+            result[key] = copy.deepcopy(target_value)
+    return result
+
+
+def load_yaml_config(path):
+    with open(path, 'r') as file:
+        config = yaml.safe_load(file)
+        config["eval_env"] = deep_merge(origin=config["env"], target=config["eval_env"])
+
+    return config

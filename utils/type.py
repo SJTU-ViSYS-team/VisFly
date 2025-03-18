@@ -173,6 +173,18 @@ class TensorDict(dict):
 
     def numpy(self):
         for key, value in self.items():
-            self[key] = self[key].cpu().numpy()
+            self[key] = self[key].cpu().detach().numpy()
         return self
 
+    def __len__(self):
+        lens = [len(value) for value in self.values()]
+        # assert all lens equal
+        assert all([l == lens[0] for l in lens])
+        return lens[0]
+
+    def __iter__(self):
+        # 获取第一个 value 的长度
+        first_length = len(self)
+        # 生成每个索引对应的字典
+        for i in range(first_length):
+            yield self[i]

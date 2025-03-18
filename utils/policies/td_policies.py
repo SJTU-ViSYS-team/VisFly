@@ -226,7 +226,7 @@ class Actor(SAC_Actor):
             Mean, standard deviation and optional keyword arguments.
         """
         # obs = obs_as_tensor(obs, device=self.device)
-        obs = obs.to(self.device)
+        # obs = obs.to(self.device)
         if hasattr(self.features_extractor, "recurrent_extractor"):
             features, h = self.extract_features(obs, self.features_extractor)
         else:
@@ -253,6 +253,18 @@ class Actor(SAC_Actor):
         mean_actions, log_std, kwargs, h = self.get_action_dist_params(obs)
         return self.action_dist.proba_distribution(mean_actions, log_std, **kwargs), h
 
+    def extract_features(self, obs: PyTorchObs, features_extractor: BaseFeaturesExtractor) -> th.Tensor:
+        """
+        Preprocess the observation if needed and then compute the features.
+
+        :param obs:
+        :param features_extractor:
+        :return:
+            The computed features (usually after being processed by a CNN)
+        """
+        # obs = obs_as_tensor(obs, device=self.device)
+        # obs = obs.to(self.device)
+        return features_extractor(obs)
 
 class MTDPolicy(SACPolicy):
     features_extractor_alias = {
@@ -265,6 +277,7 @@ class MTDPolicy(SACPolicy):
         "StateImageExtractor": StateImageExtractor,
         "StateTargetImageExtractor": StateTargetImageExtractor,
         "StateGateExtractor": StateGateExtractor,
+        "LatentCombineExtractor": LatentCombineExtractor
     }
     activation_fn_alias = {
         "relu": nn.ReLU,
@@ -364,7 +377,7 @@ class MTDPolicy(SACPolicy):
 
         # obs_tensor = obs_as_tensor(observation, device=self.device)
         # obs_tensor = observation if
-        obs_tensor = observation.to(self.device)
+        obs_tensor = obs_as_tensor(observation,device=self.device)
         with th.no_grad():
             actions, h = self._predict(obs_tensor, deterministic=deterministic)
         # Convert to numpy, and reshape to the original action shape

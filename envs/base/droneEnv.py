@@ -120,7 +120,7 @@ class DroneEnvsBase:
 
     def _create_bbox(self):
         if not self.visual:
-            bboxes = [th.tensor([[-5., -10., 0.], [18., 10., 7.]]).to(self.device)]
+            bboxes = [th.tensor([[-25., -10., 0.], [25., 10., 8.]]).to(self.device)]
         # else:
         #     bboxes = []
         #     if self.sceneManager.scenes[0] is None:
@@ -147,16 +147,16 @@ class DroneEnvsBase:
         if issubclass(state_generator_class, UniformStateRandomizer):
             generator_kwargs = [{
                 "position": kwarg.get("position"),
-                # "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
-                # "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
-                # "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]})
+                "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
+                "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
+                "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]})
             } for kwarg in kwargs_list]
         elif issubclass(state_generator_class, NormalStateRandomizer):
             generator_kwargs = [{
                 "position": kwarg.get("position"),
-                # "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
-                # "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
-                # "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]})
+                "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
+                "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
+                "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]})
             } for kwarg in kwargs_list]
         elif issubclass(state_generator_class, UnionRandomizer):
             # generator_kwargs = [kwarg.get("kwargs") for kwarg in kwargs_list]
@@ -447,3 +447,5 @@ class DroneEnvsBase:
     def train(self):
         self._eval = False
 
+    def transform_2_local_axes(self, other):
+        return self.dynamics.transform_2_local_axes(other)
