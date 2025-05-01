@@ -153,7 +153,7 @@ def create_trans_cnn(
         squash_output: bool = False,
         bn: bool = False,
         ln: bool = False,
-        with_bias: bool = True,
+        bias: bool = True,
         target_output_shape: Tuple[int, int, int] = None,
         device: th.device = th.device("cpu")
 
@@ -174,7 +174,9 @@ def create_trans_cnn(
             channel[idx],
             kernel_size=kernel_size[idx],
             stride=stride[idx],
-            padding=padding[idx])
+            padding=padding[idx],
+            bias=bias,
+        )
         )
         prev_channel = channel[idx]
         if bn:
@@ -206,7 +208,7 @@ def create_cnn(
         squash_output: bool = False,
         bn: bool = False,
         ln: bool = False,
-        with_bias: bool = True,
+        bias: bool = True,
         max_pool: int = 0,
         device: th.device = th.device("cpu")
 
@@ -222,7 +224,15 @@ def create_cnn(
     modules = []
 
     for idx in range(len(channel)):
-        modules.append(nn.Conv2d(prev_channel, channel[idx], kernel_size=kernel_size[idx], stride=stride[idx], padding=padding[idx]))
+        modules.append(nn.Conv2d(
+            prev_channel,
+            channel[idx],
+            kernel_size=kernel_size[idx],
+            stride=stride[idx],
+            padding=padding[idx],
+            bias=bias,
+        )
+        )
         prev_channel = channel[idx]
         if bn:
             modules.append(nn.BatchNorm2d(channel[idx]))
@@ -251,7 +261,7 @@ def create_mlp(
         activation_fn: Type[nn.Module] = nn.ReLU,
         bn: Union[bool, List] = False,
         squash_output: bool = False,
-        with_bias: bool = True,
+        bias: bool = True,
         ln: Union[bool, List] = False,
         device: th.device = th.device("cpu")
 
@@ -292,7 +302,7 @@ def create_mlp(
     modules = []
     prev_dim = input_dim
     for idx in range(len(layer)):
-        modules.append(nn.Linear(prev_dim, layer[idx], bias=with_bias))
+        modules.append(nn.Linear(prev_dim, layer[idx], bias=bias))
         prev_dim = layer[idx]
         if bn:
             modules.append(AutoTransDimBatchNorm1d(layer[idx]))
@@ -302,7 +312,7 @@ def create_mlp(
 
     if output_dim is not None:
         last_layer_dim = layer[-1] if len(layer) > 0 else input_dim
-        modules.append(nn.Linear(last_layer_dim, output_dim, bias=with_bias))
+        modules.append(nn.Linear(last_layer_dim, output_dim))
 
     if squash_output:
         if len(modules) > 0 and not isinstance(modules[-1], nn.Linear):
@@ -315,7 +325,9 @@ def create_mlp(
 
     net = nn.Sequential(*modules).to(device)
 
-    return net
+    output_dim = output_dim if output_dim is not None else prev_dim
+
+    return net, output_dim
 
 
 def set_recurrent_feature_extractor(cls, input_size, rnn_setting):
@@ -421,7 +433,8 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
                 padding=net_arch.get("padding", [0, 0, 0]),
                 stride=net_arch.get("stride", [1, 1, 1]),
                 bn=net_arch.get("bn", False),
-                ln=net_arch.get("ln", False)
+                ln=net_arch.get("ln", False),
+                bias=net_arch.get("bias", True),
             )
         )
         _image_features_dims = _get_conv_output(image_extractor, observation_space.shape)

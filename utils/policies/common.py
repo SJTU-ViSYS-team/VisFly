@@ -16,17 +16,17 @@ def init_model_weights(model, init_type='kaiming'):
     """
 
     def init_func(m):
-        if isinstance(m, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
+        if isinstance(m, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d, nn.parameter.Parameter)):
             if init_type == 'kaiming':
-                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight)
             elif init_type == 'xavier':
                 nn.init.xavier_uniform_(m.weight)
             elif init_type == 'orthogonal':
                 nn.init.orthogonal_(m.weight)
             elif init_type == 'normal':
-                nn.init.normal_(m.weight, mean=0.0, std=0.02)
+                nn.init.normal_(m.weight, mean=0.0, std=0.5)
             elif init_type == 'uniform':
-                nn.init.uniform_(m.weight, -0.02, 0.02)
+                nn.init.uniform_(m.weight, -0.5, 0.5)
             else:
                 raise ValueError(f'Initialization type {init_type} not supported')
 

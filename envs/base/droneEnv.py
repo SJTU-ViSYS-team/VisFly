@@ -46,13 +46,13 @@ class DroneEnvsBase:
         self.visual = visual
 
         self.noise_settings = random_kwargs.get("noise_kwargs", {})
-        self._create_noise_model()
         self.dynamics = Dynamics(
             num=num_agent_per_scene * num_scene,
             seed=seed,
             device=device,
             **dynamics_kwargs
         )
+        self._create_noise_model()
 
         self.is_multi_drone = multi_drone
         if self.is_multi_drone and (num_agent_per_scene == 1):
@@ -95,8 +95,8 @@ class DroneEnvsBase:
         self.noise_settings["IMU"] = self.noise_settings.get("IMU", {
             "model": "UniformNoiseModel",
             "kwargs": {
-                "mean": 0,
-                "half": 0,
+                "mean": th.zeros((self.dynamics.state.shape[1])),
+                "half": th.zeros((self.dynamics.state.shape[1])),
             }
         })
         if self.noise_settings["IMU"]["model"] == "UniformNoiseModel":
@@ -108,14 +108,15 @@ class DroneEnvsBase:
 
     def _generate_noise_obs(self, sensor):
         if sensor == "IMU":
-            state_with_noise = self.state + self.noise_settings["IMU"].generate(self.state.shape)
+            state_with_noise = self.state + self.noise_settings["IMU"].generate(self.dynamics.num).to(self.device)
             # normalize the orientation
-            normalized_ori = th.nn.functional.normalize(state_with_noise[:, 3:], p=2, dim=1)
-            state_with_noise = th.cat([
-                state_with_noise[:, :3],
-                normalized_ori,
-                state_with_noise[:, 7:]
-            ], dim=1)
+            if self.dynamics.is_quat_output:
+                normalized_ori = th.nn.functional.normalize(state_with_noise[:, 3:7], p=2, dim=1)
+                state_with_noise = th.cat([
+                    state_with_noise[:, :3],
+                    normalized_ori,
+                    state_with_noise[:, 7:]
+                ], dim=1)
             return state_with_noise
 
     def _create_bbox(self):
@@ -259,7 +260,7 @@ class DroneEnvsBase:
         self.dynamics.reset(pos=pos, ori=ori, vel=vel, ori_vel=ori_vel, motor_omega=motor_speed, thrusts=thrust, t=t, indices=indices)
         if self.visual:
             self.sceneManager.reset_agents(std_positions=pos, std_orientations=ori, indices=indices)
-            self.update_observation(indices=indices)
+        self.update_observation(indices=indices)
         self.update_collision(indices)
 
     def reset_scenes(self, indices: Optional[List[int]] = None):
@@ -269,38 +270,39 @@ class DroneEnvsBase:
         self.sceneManager.reset_scenes(indices)
 
     def update_observation(self, indices=None):
-        if indices is None:
-            img_obs = self.sceneManager.get_observation()
-            # training channel sequence
-            for sensor_uuid in self._visual_sensor_list:
-                if "depth" in sensor_uuid:
-                    self._sensor_obs[sensor_uuid] = \
-                        np.expand_dims(np.stack([each_agent_obs[sensor_uuid] for each_agent_obs in img_obs]), 1)
-                elif "color" in sensor_uuid:
-                    self._sensor_obs[sensor_uuid] = \
-                        np.transpose(np.stack([each_agent_obs[sensor_uuid] for each_agent_obs in img_obs])[..., :3], (0, 3, 1, 2))
-                elif "semantic" in sensor_uuid:
-                    self._sensor_obs[sensor_uuid] = \
-                        np.stack([each_agent_obs[sensor_uuid] for each_agent_obs in img_obs])
-                else:
-                    raise KeyError("Can not find uuid of sensors")
-        else:
-            img_obs = self.sceneManager.get_observation(indices=indices)
-            for each_agent_obs, index in zip(img_obs, indices):
+        if self.visual:
+            if indices is None:
+                img_obs = self.sceneManager.get_observation()
+                # training channel sequence
                 for sensor_uuid in self._visual_sensor_list:
                     if "depth" in sensor_uuid:
-                        self._sensor_obs[sensor_uuid][index, :, :, :] = \
-                            np.expand_dims(each_agent_obs[sensor_uuid], 0)
-                        # set background (value==0) to 100
-                        self._sensor_obs[sensor_uuid][index, :, :, :][self._sensor_obs[sensor_uuid][index, :, :, :] == 0] = 100
+                        self._sensor_obs[sensor_uuid] = \
+                            np.expand_dims(np.stack([each_agent_obs[sensor_uuid] for each_agent_obs in img_obs]), 1)
                     elif "color" in sensor_uuid:
-                        self._sensor_obs[sensor_uuid][index, :, :, :] = \
-                            np.transpose(each_agent_obs[sensor_uuid][..., :3], (2, 0, 1))
+                        self._sensor_obs[sensor_uuid] = \
+                            np.transpose(np.stack([each_agent_obs[sensor_uuid] for each_agent_obs in img_obs])[..., :3], (0, 3, 1, 2))
                     elif "semantic" in sensor_uuid:
-                        self._sensor_obs[sensor_uuid][index, :, :, :] = \
-                            each_agent_obs[sensor_uuid]
+                        self._sensor_obs[sensor_uuid] = \
+                            np.stack([each_agent_obs[sensor_uuid] for each_agent_obs in img_obs])
                     else:
                         raise KeyError("Can not find uuid of sensors")
+            else:
+                img_obs = self.sceneManager.get_observation(indices=indices)
+                for each_agent_obs, index in zip(img_obs, indices):
+                    for sensor_uuid in self._visual_sensor_list:
+                        if "depth" in sensor_uuid:
+                            self._sensor_obs[sensor_uuid][index, :, :, :] = \
+                                np.expand_dims(each_agent_obs[sensor_uuid], 0)
+                            # set background (value==0) to 100
+                            self._sensor_obs[sensor_uuid][index, :, :, :][self._sensor_obs[sensor_uuid][index, :, :, :] == 0] = 100
+                        elif "color" in sensor_uuid:
+                            self._sensor_obs[sensor_uuid][index, :, :, :] = \
+                                np.transpose(each_agent_obs[sensor_uuid][..., :3], (2, 0, 1))
+                        elif "semantic" in sensor_uuid:
+                            self._sensor_obs[sensor_uuid][index, :, :, :] = \
+                                each_agent_obs[sensor_uuid]
+                        else:
+                            raise KeyError("Can not find uuid of sensors")
 
         self._sensor_obs["IMU"] = self._generate_noise_obs("IMU")
 
@@ -341,7 +343,7 @@ class DroneEnvsBase:
         self.dynamics.step(action)
         if self.visual:
             self.sceneManager.set_pose(self.dynamics.position, self.dynamics._orientation.toTensor().T)
-            self.update_observation()
+        self.update_observation()
         self.update_collision()
 
     def set_seed(self, seed: Union[int, None] = 42):
@@ -440,12 +442,3 @@ class DroneEnvsBase:
     @property
     def collision_dis(self):
         return self._collision_dis
-
-    def eval(self):
-        self._eval = True
-
-    def train(self):
-        self._eval = False
-
-    def transform_2_local_axes(self, other):
-        return self.dynamics.transform_2_local_axes(other)

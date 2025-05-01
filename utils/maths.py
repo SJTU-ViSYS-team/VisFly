@@ -265,7 +265,7 @@ class Integrator:
 
             # ori = ori / ori.norm()
 
-            return pos, ori, vel, ori_vel
+            return pos, ori, vel, ori_vel, d_ori_vel
 
         elif type == "rk4":
             ks = th.tensor([1., 2., 2., 1.]) / 6
@@ -300,7 +300,7 @@ class Integrator:
             vel += d_vel @ ks * dt
             ori_vel += d_ori_vel @ ks * dt
 
-            return pos, ori, vel, ori_vel
+            return pos, ori, vel, ori_vel, d_ori_vel
 
         else:
             raise ValueError("type should be one of ['euler', 'rk4']")

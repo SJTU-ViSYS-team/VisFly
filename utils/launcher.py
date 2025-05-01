@@ -74,5 +74,9 @@ def rl_parser():
         default="navigation",
         help="To train new model or simply test pre-trained model",
     )
+    #debug add such --logdir /saved/original_with_new_trainAC --task dmc_walker_walk_3 --configs dmc_vision
+    parser.add_argument("--logdir", type=str, default="/saved/original_with_new_trainAC")
+    parser.add_argument("--task", type=str, default="dmc_walker_walk_3")
+    parser.add_argument("--configs",type=str, default="dmc_control")
     return parser
 
