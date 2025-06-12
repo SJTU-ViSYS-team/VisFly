@@ -25,7 +25,7 @@ class DroneEnvsBase:
             random_kwargs: Optional[Dict] = {},
             dynamics_kwargs: Optional[Dict] = {},
             scene_kwargs: Optional[Dict] = {},
-            sensor_kwargs: Optional[Dict] = None,
+            sensor_kwargs: Optional[Dict] = {},
             uav_radius: float = 0.1,
             sensitive_radius: float = 10.,
             multi_drone: bool = False,
@@ -138,7 +138,14 @@ class DroneEnvsBase:
             self._flatten_bboxes = [bbox.flatten() for bbox in bboxes]
 
     def _create_randomizer(self, random_kwargs: Dict):
-        state_random_kwargs = random_kwargs.get("state_generator", {})
+        state_random_kwargs = random_kwargs.get("state_generator",
+                                                {
+                                                    "class": "Uniform",
+                                                    "kwargs": [
+                                                        {"position": {"mean": [0., 0., 1.], "half": [0., 0., 0.0]}},
+                                                    ]
+                                                }
+                                                )
         state_generator_class = state_random_kwargs.get("class", UniformStateRandomizer)
         if isinstance(state_generator_class, str):
             state_generator_class = self.state_generator_alias.get(state_generator_class, None)

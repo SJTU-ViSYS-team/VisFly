@@ -16,6 +16,12 @@ More tasks (**Tracking**, **Landing**, **Racing**)  involves **BPTT** could be f
 
 We will keep updating this project for more usages.
 
+# Noting!
+We will keep updating VisFly for more usages, and the interfaces may be changed. 
+It is hard to comprehensively well maintain all the previous section of the code. 
+Sometimes you will encounter some errors when running the example.
+If you are in a hurry to use VisFly, you could try to reset the git to previous version. 
+Or you can directly tell me via email or Issues on github, and I will fix these issues in next code push.
 # Installation
 ## Clone the repository
 Clone the repository to local.
@@ -163,8 +169,8 @@ env = NavigationEnv(
             # "IMU": {
             #     "model": "GaussianNoiseModel", # assert model in ["GaussianNoiseModel", "UniformNoiseModel"]
             #     "kwargs": {
-            #         "mean": 0,
-            #         "std": 0.01,
+            #         "mean": {0,0,...}, # same dim with state
+            #         "std": {0,0,...},
             #     }
             # }
         },

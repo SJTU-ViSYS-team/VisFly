@@ -27,26 +27,17 @@ class HoverEnv(DroneGymEnvsBase):
             target: Optional[th.Tensor] = None,
             max_episode_steps: int = 256,
     ):
-        sensor_kwargs = [{
-            "sensor_type": SensorType.DEPTH,
-            "uuid": "depth",
-            "resolution": [64, 64],
-        }]
+
         random_kwargs = {
             "state_generator":
                 {
                     "class": "Uniform",
                     "kwargs": [
-                        {"position": {"mean": [1., 0., 1.5], "half": [2.0, 2.0, 1.0]}},
+                        # {"position": {"mean": [1., 0., 1.5], "half": [0.0, 0.0, 0.0]}},
+                        {"position": {"mean": [1., 0., 1.5], "half": [1.0, 1.0, 0.5]}},
                     ]
                 }
-        } if random_kwargs is None else random_kwargs
-        dynamics_kwargs = {
-            "dt": 0.02,
-            "ctrl_dt": 0.02,
-            "action_type": "thrust",
-            "ctrl_delay":False,
-        } if dynamics_kwargs is None else dynamics_kwargs
+        }
 
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
@@ -109,8 +100,8 @@ class HoverEnv2(HoverEnv):
             seed: int = 42,
             visual: bool = True,
             requires_grad: bool = False,
-            random_kwargs: dict = None,
-            dynamics_kwargs: dict = None,
+            random_kwargs: dict = {},
+            dynamics_kwargs: dict = {},
             scene_kwargs: dict = {},
             sensor_kwargs: list = [],
             device: str = "cpu",
@@ -138,7 +129,7 @@ class HoverEnv2(HoverEnv):
     ) -> Dict:
         dis_scale = (self.target - self.position).norm(dim=1, keepdim=True).detach().clamp_min(self.max_sense_radius)
         state = th.hstack([
-            (self.target - self.position) / dis_scale,
+            (self.target - self.position) / 10,
             self.orientation,
             self.velocity / 10,
             self.angular_velocity / 10,
@@ -146,7 +137,7 @@ class HoverEnv2(HoverEnv):
 
         return TensorDict({
             "state": state,
-            "depth": th.as_tensor(self.sensor_obs["depth"]/10).clamp(max=1)
+            # "depth": th.as_tensor(self.sensor_obs["depth"]/10).clamp(max=1)
         })
 
 

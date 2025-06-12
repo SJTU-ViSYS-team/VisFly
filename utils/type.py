@@ -35,7 +35,7 @@ class Uniform:
         return self
 
     def generate(self, size):
-        return (th.rand(size) - 0.5) * self.half + self.mean
+        return (th.rand(size, len(self.mean)) - 0.5) * self.half + self.mean
 
 
 class Normal:

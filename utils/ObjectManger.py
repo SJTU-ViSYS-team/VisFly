@@ -10,11 +10,10 @@ g = th.as_tensor([[0, 0, -9.8]])
 class ObjectManager:
     def __init__(
             self,
-            num_scene,
-            num_agent_per_scene,
+            scene_handle,
             dt,
             object_scene_handle=None,
-            object_setting=None,
+            object_path=None,
             isolated=False,
             device=th.device("cpu")
 
@@ -23,14 +22,10 @@ class ObjectManager:
 
         Args:
             num_scene: num of scenes
-            num_agent_per_scene: num of agents per scene
             dt: time interval
             object_scene_handle: object handles in habitat-sim if vision is available
-            object_kwargs: The settings of objects or the path of settings of objects
         """
-        self.num_envs = num_scene * num_agent_per_scene
-        self.num_scene = num_scene
-        self.num_agent_per_scene = num_agent_per_scene
+        self.num_scene = sc
         self.handles = object_scene_handle
         self.dt = dt
 
@@ -40,14 +35,14 @@ class ObjectManager:
         self._angular_velocity = None
 
         self._object_isolated = isolated
-        self._object_setting = object_setting
+        self._object_path = object_path
         self._init_model()
 
         self.device = device
 
     def _init_model(self):
         current_file_addr = os.path.dirname(os.path.abspath(__file__))
-        _object_setting = current_file_addr + "/../configs/objects.json" if self._object_setting is None else self._object_setting
+        _object_setting = current_file_addr + "/../configs/objects.json" if self._object_path is None else self._object_path
         js_file = open(_object_setting)
         kwargs = json.load(js_file)["objects"]
         state_generators = []

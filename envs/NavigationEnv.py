@@ -35,7 +35,7 @@ class NavigationEnv(DroneGymEnvsBase):
             random_kwargs: dict = {},
             dynamics_kwargs: dict = {},
             scene_kwargs: dict = {},
-            sensor_kwargs: list = None,
+            sensor_kwargs: list = {},
             device: str = "cpu",
             target: Optional[th.Tensor] = None,
             max_episode_steps: int = 256,

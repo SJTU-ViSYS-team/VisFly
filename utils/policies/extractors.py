@@ -351,7 +351,7 @@ def set_mlp_feature_extractor(cls, name, observation_space, net_arch, activation
         input_dim = observation_space
     # input_dim = observation_space.shape[0] if len(observation_space.shape) == 1 else observation_space.shape[1]
 
-    net = create_mlp(
+    net, output_dim = create_mlp(
         input_dim=input_dim,
         layer=net_arch.get("layer", []),
         activation_fn=activation_fn,
@@ -361,7 +361,7 @@ def set_mlp_feature_extractor(cls, name, observation_space, net_arch, activation
     setattr(cls, name + "_extractor", net)
     cls._extract_names.append(name)
 
-    features_dim = _get_linear_output(net, observation_space.shape)
+    # features_dim = _get_linear_output(net, observation_space.shape)
     return features_dim
 
 
@@ -390,7 +390,7 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
                                               padding=image_extractor.conv1.padding,
                                               bias=image_extractor.conv1.bias is not None)
             if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
-                image_extractor.fc = create_mlp(
+                image_extractor.fc, output_dim = create_mlp(
                     input_dim=image_extractor.fc.in_features,
                     activation_fn=activation_fn,
                     **net_arch
@@ -403,7 +403,7 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
                                                        bias=image_extractor.features[0][0].bias is not None)
 
             if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
-                image_extractor.classifier[-1] = create_mlp(
+                image_extractor.classifier[-1], output_dim = create_mlp(
                     input_dim=image_extractor.classifier[-1].in_features,
                     activation_fn=activation_fn,
                     **net_arch
@@ -415,7 +415,7 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
                                                        padding=image_extractor.features[0][0].padding,
                                                        bias=image_extractor.features[0][0].bias is not None)
             if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
-                image_extractor.classifier[-1] = create_mlp(
+                image_extractor.classifier[-1], output_dim = create_mlp(
                     input_dim=image_extractor.classifier[-1].in_features,
                     activation_fn=activation_fn,
                     **net_arch
@@ -446,7 +446,7 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
                                            activation_fn=activation_fn,
                                            bn=net_arch.get("bn", False),
                                            ln=net_arch.get("ln", False)
-                                       )
+                                       )[0]
                                        )
     setattr(cls, name + "_extractor", image_extractor)
     cls._extract_names.append(name)
@@ -746,7 +746,7 @@ class FlexibleMLP(nn.Module):
 
         self._features_dim = sum(features_dims)
 
-        self.net = create_mlp(
+        self.net, output_dim = create_mlp(
             input_dim=self._features_dim,
             layer=net_arch.get("layer", []),
             activation_fn=activation_fn,

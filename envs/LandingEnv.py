@@ -43,12 +43,6 @@ class LandingEnv(DroneGymEnvsBase):
                 }
         }
 
-        dynamics_kwargs = {
-            "dt": 0.02,
-            "ctrl_dt": 0.02,
-            "action_type": "thrust",
-            "ctrl_delay": False,
-        }
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
             num_scene=num_scene,

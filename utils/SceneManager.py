@@ -2,6 +2,8 @@ import habitat_sim
 import os
 import sys
 
+from .ObjectManger import ObjectManager
+
 sys.path.append(os.getcwd())
 
 from .dataloader import SimpleDataLoader
@@ -119,6 +121,7 @@ class SceneManager(ABC):
             render_settings=None,
             reset_settings=None,
             noise_settings=None,
+            obj_settings=None,
     ):
 
         if reset_settings is None:
@@ -145,6 +148,7 @@ class SceneManager(ABC):
         self.render_settings = render_settings
         self.reset_settings = reset_settings
         self.noise_settings = noise_settings
+        self.obj_settings = obj_settings
 
         self.drone_radius = uav_radius
         self.sensitive_radius = sensitive_radius
@@ -171,13 +175,16 @@ class SceneManager(ABC):
 
         self.is_multi_drone = multi_drone
 
-        self._obj_mgrs = None
+        if self.obj_settings:
+            self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
+            self._obj_ctrls: ObjectManager = [None for _ in range(num_scene)]
+
         if multi_drone:
             self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
-            self._objects = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
+            self._drones = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
 
         if self.render_settings is not None:
-            self.render_settings["object_path"] = self.render_settings.get("object_path", self._object_path)
+            self.render_settings["object_path"] = self.render_settings.get("object_path", self._drone_path)
             self.render_settings["line_width"] = self.render_settings.get("line_width", 1.0)
             self.render_settings["axes"] = self.render_settings.get("axes", False)
             self.render_settings["trajectory"] = self.render_settings.get("trajectory", False)
@@ -193,7 +200,7 @@ class SceneManager(ABC):
             self._render_camera = [None for _ in range(num_scene)]
             self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
             self._line_mgrs: habitat_sim.gfx.DebugLineRender = [None for _ in range(num_scene)]
-            self._objects = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
+            self._drones = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
 
         self.trajectory = [[[] for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
         self._collision_point = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
@@ -206,7 +213,7 @@ class SceneManager(ABC):
         index = parts.index("datasets")+1
         root_addr = os.path.dirname(__file__)+"/../"
         self.datasets = parts[index]
-        self._object_path = [root_addr + "datasets/spy_datasets/configs/agents/DJI_Mavic_"+c+".object_config.json" for c in ["red","green","blue","orange"]]
+        self._drone_path = [root_addr + "datasets/spy_datasets/configs/agents/DJI_Mavic_" + c + ".object_config.json" for c in ["red", "green", "blue", "orange"]]
         if "hm3d" in parts[index].lower():
             self.datasets_name = "hm3d"
             self._datasets_path = root_addr+"datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
@@ -308,7 +315,7 @@ class SceneManager(ABC):
                 )
                 drone_id += 1
                 if self.is_multi_drone:
-                    self._objects[scene_id][agent_id].root_scene_node.transformation = \
+                    self._drones[scene_id][agent_id].root_scene_node.transformation = \
                         self.agents[scene_id][agent_id].scene_node.transformation
         self._update_collision_infos()
 
@@ -316,7 +323,7 @@ class SceneManager(ABC):
             # set the pose of objects or agents in the scene
             for scene_id in range(self.num_scene):
                 for agent_id in range(self.num_agent_per_scene):
-                    self._objects[scene_id][agent_id].root_scene_node.transformation = \
+                    self._drones[scene_id][agent_id].root_scene_node.transformation = \
                         self.agents[scene_id][agent_id].scene_node.transformation
 
     def get_observation(self, indices: Optional[int] = None):
@@ -498,7 +505,7 @@ class SceneManager(ABC):
                 for agent_id in range(self.num_agent_per_scene):
                     # self._line_renders[scene_id].push_transform(self.agents[scene_id][agent_id].scene_node.transformation)
                     self._line_mgrs[scene_id].push_transform(
-                        self._objects[scene_id][agent_id].transformation
+                        self._drones[scene_id][agent_id].transformation
                     )
                     draw_axes(self.scenes[scene_id], origin, axis_len=1)
                     self._line_mgrs[scene_id].pop_transform()
@@ -713,19 +720,30 @@ class SceneManager(ABC):
                 self._line_mgrs[scene_id].set_line_width(self.render_settings["line_width"])
                 # create objects in each scene
                 for agent_id in range(self.num_agent_per_scene):
-                    self._objects[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(
-                        self._object_path[agent_id % len(self._object_path)]
+                    self._drones[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(
+                        self._drone_path[agent_id % len(self._drone_path)]
                     )
 
             if self.is_multi_drone:
-                if self._objects[scene_id][0] is None:
+                if self._drones[scene_id][0] is None:
                     self._obj_mgrs[scene_id] = self.scenes[scene_id].get_rigid_object_manager()
-                    for agent_id in range(self.num_agent_per_scene):
-                        self._objects[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(
-                            self._object_path[agent_id % len(self._object_path)]
-                        )
+                for agent_id in range(self.num_agent_per_scene):
+                    self._drones[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(
+                        self._drone_path[agent_id % len(self._drone_path)]
+                    )
+
+            if self.obj_settings:
+                if not self._obj_mgrs[scene_id]:
+                    self._obj_mgrs[scene_id] = self.scenes[scene_id].get_rigid_object_manager()
+                self._obj_ctrls[scene_id] = \
+                    ObjectManager(scene_handle=self._obj_mgrs[scene_id], **self.obj_settings)
+
 
         test = 1
+
+    def _object_step(self):
+        for obj_ctrl in self._obj_ctrls:
+            obj_ctrl.step()
 
     def _load_scene(self, scene_path) -> habitat_sim.Simulator:
         """_summary_

@@ -28,11 +28,11 @@ class TrackEnv(DroneGymEnvsBase):
             max_episode_steps: int = 256,
             latent_dim=None,
     ):
-        self.center = th.as_tensor([3, 0, 2])
+        self.center = th.as_tensor([2, 0, 1])
         self.next_points_num = 10
-        self.radius = 1.5
+        self.radius = 2
         self.dt = 0.1
-        self.radius_spd = 1 * th.pi / 1
+        self.radius_spd = 0.2 * th.pi / 1
         self.success_radius = 0.5
 
         random_kwargs = {
@@ -45,12 +45,7 @@ class TrackEnv(DroneGymEnvsBase):
                     ]
                 }
         }
-        dynamics_kwargs = {
-            "dt": 0.02,
-            "ctrl_dt": 0.02,
-            "action_type": "thrust",
-            "ctrl_delay": False,
-        }
+
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
             num_scene=num_scene,
@@ -63,8 +58,6 @@ class TrackEnv(DroneGymEnvsBase):
             scene_kwargs=scene_kwargs,
             device=device,
             max_episode_steps=max_episode_steps,
-            latent_dim=latent_dim,
-
         )
 
         self.observation_space["state"] = spaces.Box(
