@@ -35,7 +35,7 @@ class Dynamics:
             action_space: Tuple[float, float] = (-1, 1),
             device: th.device = th.device("cpu"),
             integrator: str = "euler",
-            drag_random: bool = False,
+            drag_random: float = 0,
     ):
         assert action_type in ["bodyrate", "thrust", "velocity", "position"]  # 对两个变量进行断言检查
         assert ori_output_type in ["quaternion", "euler"]
@@ -50,6 +50,8 @@ class Dynamics:
         self._angular_velocity = None
         self._motor_omega = None
         self._thrusts = None
+        self._acc = None
+        self._angular_acc = None
         self._t = None
         # command format: [gross_thrust / m (z-acc), bodyrate]
         # command format: [yaw, vx, vy, vz]
@@ -111,7 +113,7 @@ class Dynamics:
         self._t = th.zeros((self.num,), device=self.device)
 
         self._angular_acc = th.zeros((3, self.num), device=self.device)
-        self._ctrl_i = th.zeros((3, self.num), device=self.device)
+        # self._ctrl_i = th.zeros((3, self.num), device=self.device)
         # self._pre_action = th.zeros((4, self.num), device=self.device)
         self._pre_action = [
             th.zeros((4, self.num), device=self.device)
@@ -168,14 +170,13 @@ class Dynamics:
             self._motor_omega = th.ones((4, self.num), device=self.device) * self._init_motor_omega if motor_omega is None else motor_omega.T
             self._t = th.zeros((self.num,), device=self.device) if t is None else t
             self._t = th.zeros((self.num,), device=self.device) + th.rand((self.num))*3.14*2 if t is None else t
-
-            self._ctrl_i = th.zeros((3, self.num), device=self.device)
+            # self._ctrl_i = th.zeros((3, self.num), device=self.device)
             self._angular_acc = th.zeros((3, self.num), device=self.device)
             self._acc = th.zeros((3, self.num), device=self.device)
             self._pre_action = [th.zeros(4, self.num) for _ in range(self._comm_delay_steps)]
             if self._drag_random:
-                self._linear_drag_coeffs = self._linear_drag_coeffs_mean * (th.randn_like(self._linear_drag_coeffs_mean)+1).clamp(0.5, 1.5)
-                self._quad_drag_coeffs = self._quad_drag_coeffs_mean * (th.randn_like(self._quad_drag_coeffs_mean)+1).clamp(0.5, 1.5)
+                self._linear_drag_coeffs = self._linear_drag_coeffs_mean * ((th.rand_like(self._linear_drag_coeffs_mean)-0.5)*2*self._drag_random).clamp(0.5, 1.5)
+                self._quad_drag_coeffs = self._quad_drag_coeffs_mean * ((th.rand_like(self._quad_drag_coeffs_mean)-0.5)*2*self._drag_random).clamp(0.5, 1.5)
 
         else:
             self._position[:, indices] = th.zeros((3, len(indices)), device=self.device) if pos is None else pos.T
@@ -186,15 +187,15 @@ class Dynamics:
             self._thrusts[:, indices] = th.ones((4, len(indices)), device=self.device) * self._init_thrust if thrusts is None else thrusts.T
             self._t[indices] = th.zeros((len(indices),), device=self.device) if t is None else t
             # self._t[indices] = th.zeros((len(indices),), device=self.device) + th.rand((len(indices),)) * 3.14*2 if t is None else t
-            self._ctrl_i[:, indices] = th.zeros((3, len(indices)), device=self.device)
+            # self._ctrl_i[:, indices] = th.zeros((3, len(indices)), device=self.device)
             self._angular_acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
             self._acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
             for i in range(self._comm_delay_steps):
                 self._pre_action[i][:, indices] = self._pre_action[i][:, indices] * 0
             
             if self._drag_random:
-                self._linear_drag_coeffs[:, indices] = self._linear_drag_coeffs_mean * (th.randn_like(self._linear_drag_coeffs_mean)+1).clamp(0.5, 1.5) 
-                self._quad_drag_coeffs[:, indices] = self._quad_drag_coeffs_mean * (th.randn_like(self._quad_drag_coeffs_mean)+1).clamp(0.5, 1.5)
+                self._linear_drag_coeffs[:, indices] = self._linear_drag_coeffs_mean * ((th.rand_like(self._linear_drag_coeffs_mean[:,indices])-0.5)*2*self._drag_random).clamp(0.5, 1.5)
+                self._quad_drag_coeffs[:, indices] = self._quad_drag_coeffs_mean * ((th.rand_like(self._quad_drag_coeffs_mean[:,indices])-0.5)*2*self._drag_random).clamp(0.5, 1.5)
 
         return self.state
 
@@ -276,8 +277,8 @@ class Dynamics:
             # b = self._inertia @ self._angular_velocity
             # a = self._angular_velocity
             # self.cache_i = 0 in self.reset()
-            self._ctrl_i += (self._BODYRATE_PID.i @ (angular_velocity_error * self.dt))
-            self._ctrl_i = self._ctrl_i.clip(min=-3, max=3)
+            # self._ctrl_i += (self._BODYRATE_PID.i @ (angular_velocity_error * self.dt))
+            # self._ctrl_i = self._ctrl_i.clip(min=-3, max=3)
             body_torque_des = \
                 self._inertia @ self._BODYRATE_PID.p @ angular_velocity_error \
                 + cross(self._angular_velocity + 0, self._inertia @ (self._angular_velocity + 0)) \
