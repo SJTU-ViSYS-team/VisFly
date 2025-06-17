@@ -175,6 +175,9 @@ class SceneManager(ABC):
 
         self.is_multi_drone = multi_drone
 
+        # Initialize _obj_mgrs to None by default
+        self._obj_mgrs = None
+
         if self.obj_settings:
             self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
             self._obj_ctrls: ObjectManager = [None for _ in range(num_scene)]
@@ -426,6 +429,9 @@ class SceneManager(ABC):
         if indices is None:
             return habitat_to_std(np.array(self._collision_point).reshape((-1, 3)), None)[0]
         else:
+            # Convert indices to CPU if it's a tensor
+            if hasattr(indices, 'cpu'):
+                indices = indices.cpu()
             return habitat_to_std(np.array(self._collision_point).reshape((-1, 3))[indices], None)[0]
 
     def render(

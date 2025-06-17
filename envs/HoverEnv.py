@@ -26,6 +26,7 @@ class HoverEnv(DroneGymEnvsBase):
             device: str = "cpu",
             target: Optional[th.Tensor] = None,
             max_episode_steps: int = 256,
+            tensor_output: bool = False,
     ):
 
         random_kwargs = {
@@ -51,6 +52,7 @@ class HoverEnv(DroneGymEnvsBase):
             scene_kwargs=scene_kwargs,
             device=device,
             max_episode_steps=max_episode_steps,
+            tensor_output=tensor_output,
 
         )
 
@@ -107,6 +109,7 @@ class HoverEnv2(HoverEnv):
             device: str = "cpu",
             target: Optional[th.Tensor] = None,
             max_episode_steps: int = 256,
+            tensor_output: bool = False,
     ):
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
@@ -121,6 +124,7 @@ class HoverEnv2(HoverEnv):
             device=device,
             max_episode_steps=max_episode_steps,
             target=target,
+            tensor_output=tensor_output,
         )
 
     def get_observation(

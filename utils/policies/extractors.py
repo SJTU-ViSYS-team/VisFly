@@ -143,6 +143,17 @@ class ImgChLayerNorm(nn.Module):
         return x
 
 
+class SafeFlatten(nn.Module):
+    """A safe flatten layer that uses keyword arguments to avoid PyTorch compatibility issues."""
+    def __init__(self, start_dim=1, end_dim=-1):
+        super(SafeFlatten, self).__init__()
+        self.start_dim = start_dim
+        self.end_dim = end_dim
+    
+    def forward(self, x):
+        return x.flatten(start_dim=self.start_dim, end_dim=self.end_dim)
+
+
 def create_trans_cnn(
         kernel_size: List[int],
         channel: List[int],
@@ -245,7 +256,7 @@ def create_cnn(
     if output_channel is not None:
         modules.append(nn.Conv2d(prev_channel, output_channel, kernel_size=kernel_size[-1], stride=stride[-1], padding=padding[-1]))
 
-    modules.append(nn.Flatten())
+    modules.append(SafeFlatten())
 
     if squash_output:
         modules.append(nn.Tanh())
@@ -321,7 +332,7 @@ def create_mlp(
             modules.append(nn.Tanh())
 
     if len(modules) == 0:
-        modules.append(nn.Flatten())
+        modules.append(nn.Identity())
 
     net = nn.Sequential(*modules).to(device)
 
@@ -343,7 +354,8 @@ def set_recurrent_feature_extractor(cls, input_size, rnn_setting):
 
 
 def set_mlp_feature_extractor(cls, name, observation_space, net_arch, activation_fn):
-    layer = net_arch.get("layer", [])
+    # Support both "layer" and "mlp_layer" keys for backward compatibility
+    layer = net_arch.get("layer", net_arch.get("mlp_layer", []))
     features_dim = layer[-1] if len(layer) != 0 else observation_space.shape[0]
     if hasattr(observation_space, "shape"):
         input_dim = observation_space.shape[0] if len(observation_space.shape) == 1 else observation_space.shape[1]
@@ -353,12 +365,14 @@ def set_mlp_feature_extractor(cls, name, observation_space, net_arch, activation
 
     net, output_dim = create_mlp(
         input_dim=input_dim,
-        layer=net_arch.get("layer", []),
+        layer=layer,
         activation_fn=activation_fn,
         bn=net_arch.get("bn", False),
         ln=net_arch.get("ln", False)
     )
     setattr(cls, name + "_extractor", net)
+    if not hasattr(cls, '_extract_names'):
+        cls._extract_names = []
     cls._extract_names.append(name)
 
     # features_dim = _get_linear_output(net, observation_space.shape)
@@ -438,19 +452,23 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
             )
         )
         _image_features_dims = _get_conv_output(image_extractor, observation_space.shape)
-        if len(net_arch.get("layer", [])) > 0:
+        # Support both "layer" and "mlp_layer" keys for backward compatibility
+        layer = net_arch.get("layer", net_arch.get("mlp_layer", []))
+        if len(layer) > 0:
             image_extractor.add_module("mlp",
                                        create_mlp(
                                            input_dim=_image_features_dims,
-                                           layer=net_arch.get("layer"),
+                                           layer=layer,
                                            activation_fn=activation_fn,
                                            bn=net_arch.get("bn", False),
                                            ln=net_arch.get("ln", False)
                                        )[0]
                                        )
+            # After adding MLP, the output dimension changes to the last layer size
+            _image_features_dims = layer[-1]
     setattr(cls, name + "_extractor", image_extractor)
     cls._extract_names.append(name)
-    return _get_conv_output(image_extractor, observation_space.shape)
+    return _image_features_dims
 
 
 class TargetExtractor(CustomBaseFeaturesExtractor):
@@ -604,15 +622,36 @@ class StateTargetImageExtractor(ImageExtractor):
 
     def _build(self, observation_space, net_arch, activation_fn):
         super()._build(observation_space, net_arch, activation_fn)
+        _image_features_dim = self._features_dim  # Store the image features dimension from parent
         _state_features_dim = set_mlp_feature_extractor(self, "state", observation_space["state"], net_arch.get("state", {}), activation_fn)
         _target_features_dim = set_mlp_feature_extractor(self, "target", observation_space["target"], net_arch.get("target", {}), activation_fn)
-        self._features_dim = _state_features_dim + _target_features_dim + self._features_dim
+        
+        # Check if there are actually any image features (extractors with image-like names)
+        has_image_features = any("semantic" in name or "color" in name or "depth" in name 
+                                for name in self._extract_names)
+        
+        if has_image_features:
+            self._features_dim = _state_features_dim + _target_features_dim + _image_features_dim
+        else:
+            self._features_dim = _state_features_dim + _target_features_dim
 
     def extract(self, observation):
         state_features = self.state_extractor(observation['state'])
         target_features = self.target_extractor(observation['target'])
-        image_features = super().extract(observation)
-        return th.cat([state_features, target_features, image_features], dim=1)
+        
+        # Extract only image features, not all features in _extract_names
+        image_features = []
+        for name in self._extract_names:
+            if "semantic" in name or "color" in name or "depth" in name:
+                x = getattr(self, name + "_extractor")(observation[name])
+                image_features.append(x)
+        
+        if image_features:
+            combined_image_features = th.cat(image_features, dim=1)
+            return th.cat([state_features, target_features, combined_image_features], dim=1)
+        else:
+            # No image features found - just return state and target features
+            return th.cat([state_features, target_features], dim=1)
 
 
 class SwarmStateTargetImageExtractor(StateTargetImageExtractor):

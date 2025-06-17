@@ -320,7 +320,7 @@ class DroneEnvsBase:
             # indices are not None
             else:
                 self._collision_point[indices] = self.sceneManager.get_collision_point(indices=indices).to(self.device)
-            self._is_out_bounds = self.sceneManager.is_out_bounds
+            self._is_out_bounds = self.sceneManager.is_out_bounds.to(self.device)
 
         # not visual
         else:

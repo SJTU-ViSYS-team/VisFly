@@ -17,7 +17,7 @@ from tqdm import tqdm
 from stable_baselines3.common.utils import polyak_update, get_parameters_by_name
 from VisFly.utils.algorithms.lr_scheduler import  transfer_schedule
 from copy import deepcopy
-from common import compute_td_returns, DataBuffer3, SimpleRolloutBuffer
+from .common import compute_td_returns, DataBuffer3, SimpleRolloutBuffer
 from VisFly.utils.common import set_seed
 
 is_BP_value = True

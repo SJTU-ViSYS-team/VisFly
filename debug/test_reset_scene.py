@@ -1,7 +1,3 @@
-import os
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-
 from VisFly.envs.NavigationEnv import NavigationEnv2
 import cv2 as cv
 import torch as th
@@ -32,44 +28,39 @@ scene_kwargs = {
         "mode": "fix",
         "view": "custom",
         "resolution": [1080, 1920],
-        # "position": th.tensor([[6., 6.8, 5.5], [6,4.8,4.5]]),
         "position": th.tensor([[7., 6.8, 5.5], [7, 4.8, 4.5]]),
         "line_width": 6.,
-
-        # "point": th.tensor([[9., 0, 1], [1, 0, 1]]),
         "trajectory": True,
     }
 }
+
+# Add proper dynamics_kwargs
+dynamics_kwargs = {
+    "action_type": "bodyrate",
+    "ori_output_type": "quaternion",
+    "dt": 0.005,
+    "ctrl_dt": 0.03,
+    "ctrl_delay": True,
+    "comm_delay": 0.09,
+    "action_space": (-1, 1),
+    "integrator": "euler",
+    "drag_random": 0,
+}
+
 num_agent = 4
 env = NavigationEnv2(
     visual=True,
     num_scene=1,
     num_agent_per_scene=num_agent,
     random_kwargs=random_kwargs,
+    dynamics_kwargs=dynamics_kwargs,
     scene_kwargs=scene_kwargs,
-    sensor_kwargs=sensor_kwargs,
-    dynamics_kwargs={}
+    sensor_kwargs=sensor_kwargs
 )
 
+print("Environment created successfully!")
 env.reset()
-
-t = 0
-while True:
-    a = th.rand((num_agent, 4))
-    env.step(a)
-    # circile position
-    # position = th.tensor([[3., 0, 1]]) + th.tensor([[np.cos(t/10), np.sin(t/10), 0]]) * 2
-    # rotation = Quaternion.from_euler(th.tensor(t/10.), th.tensor(t/10.), th.tensor(t/10)).toTensor().unsqueeze(0)
-    # env.envs.sceneManager.set_pose(position=position, rotation=rotation)
-    # env.envs.update_observation()
-    img = env.render(is_draw_axes=True)
-    print(env.position[0])
-    obs = env.sensor_obs["depth"]
-    cv.imshow("img", img[0])
-    # cv.imshow("obs", np.transpose(obs[0], (1, 2, 0)))
-    cv.imshow("obs", obs[0][0])
-    cv.waitKey(100)
-    t += 1
-
-
-
+print("Environment reset successfully!")
+env.reset_env_by_id(0)
+print("Environment reset by ID successfully!")
+print("Test completed!") 

@@ -1,4 +1,4 @@
-from shac import *
+from .shac import *
 import time
 from collections import deque
 from typing import Type, Optional, Dict, ClassVar, Any, Union
