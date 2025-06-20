@@ -345,7 +345,7 @@ class BaseMlpExtractor(nn.Module):
         self._build()
 
     def _build(self):
-        self.mlp_extractor = create_mlp(
+        self.mlp_extractor, _ = create_mlp(
             self.features_dim,
             self.net_arch,
             activation_fn=self.activation_fn

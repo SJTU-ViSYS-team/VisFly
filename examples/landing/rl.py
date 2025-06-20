@@ -5,7 +5,7 @@ import os
 import numpy as np
 import torch
 import time
-
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 sys.path.append(os.getcwd())
 from VisFly.utils.policies import extractors
 from VisFly.utils.algorithms.ppo import ppo
@@ -17,7 +17,7 @@ from VisFly.utils.type import Uniform
 
 args = rl_parser().parse_args()
 """ SAVED HYPERPARAMETERS """
-training_params["num_env"] = 48
+training_params["num_env"] = 12
 training_params["learning_step"] = 1e7
 training_params["comment"] = args.comment
 training_params["max_episode_steps"] = 256
@@ -44,6 +44,7 @@ def main():
         env = LandingEnv(num_agent_per_scene=training_params["num_env"],
                              random_kwargs=random_kwargs,
                              visual=True,
+                             device="cpu",
                              max_episode_steps=training_params["max_episode_steps"],
                              scene_kwargs={
                                  "path": scene_path,
@@ -60,13 +61,13 @@ def main():
                     features_extractor_kwargs={
                         "net_arch": {
                             "color": {
-                                "mlp_layer": [128],
+                                "layer": [128],
                             },
                             "state": {
-                                "mlp_layer": [128, 64],
+                                "layer": [128, 64],
                             },
                             "target": {
-                                "mlp_layer": [128, 64],
+                                "layer": [128, 64],
                             }
                         }
                     },

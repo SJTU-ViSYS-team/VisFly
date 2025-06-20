@@ -11,6 +11,7 @@ from ...utils.type import *
 import torch.nn as nn
 from ...utils.type import ACTION_TYPE
 
+# These will be moved to the correct device in _set_device method
 g = th.tensor([[0, 0, -9.81]]).T
 z = th.tensor([[0, 0, 1]]).T
 
@@ -141,11 +142,23 @@ class Dynamics:
         self._c = self._c.to(device)
         self._thrust_map = self._thrust_map.to(device)
         self._B_allocation = self._B_allocation.to(device)
+        self._B_allocation_inv = self._B_allocation_inv.to(device)
         self.m = self.m.to(device)
         self._inertia = self._inertia.to(device)
         self._inertia_inv = self._inertia_inv.to(device)
         self._quad_drag_coeffs_mean = self._quad_drag_coeffs_mean.to(device)
         self._linear_drag_coeffs_mean = self._linear_drag_coeffs_mean.to(device)
+        
+        # Move drag coefficients if they exist
+        if hasattr(self, '_linear_drag_coeffs'):
+            self._linear_drag_coeffs = self._linear_drag_coeffs.to(device)
+        if hasattr(self, '_quad_drag_coeffs'):
+            self._quad_drag_coeffs = self._quad_drag_coeffs.to(device)
+        
+        # Move PID controllers to the correct device
+        self._BODYRATE_PID = self._BODYRATE_PID.to(device)
+        self._VELOCITY_PID = self._VELOCITY_PID.to(device)
+        self._POSITION_PID = self._POSITION_PID.to(device)
 
         global z, g
         z = z.to(device)
@@ -170,7 +183,7 @@ class Dynamics:
             self._thrusts = th.ones((4, self.num), device=self.device) * self._init_thrust if thrusts is None else thrusts.T
             self._motor_omega = th.ones((4, self.num), device=self.device) * self._init_motor_omega if motor_omega is None else motor_omega.T
             self._t = th.zeros((self.num,), device=self.device) if t is None else t
-            self._t = th.zeros((self.num,), device=self.device) + th.rand((self.num))*3.14*2 if t is None else t
+            self._t = th.zeros((self.num,), device=self.device) + th.rand((self.num), device=self.device)*3.14*2 if t is None else t
             # self._ctrl_i = th.zeros((3, self.num), device=self.device)
             self._angular_acc = th.zeros((3, self.num), device=self.device)
             self._acc = th.zeros((3, self.num), device=self.device)
@@ -192,7 +205,7 @@ class Dynamics:
             self._angular_acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
             self._acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
             for i in range(self._comm_delay_steps):
-                self._pre_action[i][:, indices] = self._pre_action[i][:, indices] * 0
+                self._pre_action[i][:, indices.cpu()] = self._pre_action[i][:, indices.cpu()] * 0
             
             if self._drag_random:
                 self._linear_drag_coeffs[:, indices] = self._linear_drag_coeffs_mean * ((th.rand_like(self._linear_drag_coeffs_mean[:,indices])-0.5)*2*self._drag_random).clamp(0.5, 1.5)
@@ -316,7 +329,7 @@ class Dynamics:
                 m = 0.5 * (R_des[..., i].T @ R[..., i] - R[..., i].T @ R_des[..., i])
                 pose_err[:, i] = -th.as_tensor([-m[1, 2], m[0, 2], -m[0, 1]], device=self.device)
 
-                ang_vel_err[:, i] = (R_des[..., i].T @ R[..., i] @ th.tensor([[0], [0], [yaw_spd_des[i]]]).squeeze() - self._angular_velocity[:, i])
+                ang_vel_err[:, i] = (R_des[..., i].T @ R[..., i] @ th.tensor([[0], [0], [yaw_spd_des[i]]], device=self.device).squeeze() - self._angular_velocity[:, i])
             body_torque_des = self._inertia @ (self._BODYRATE_PID.p @ pose_err + self._BODYRATE_PID.p @ ang_vel_err - cross(self._angular_velocity, self._angular_velocity))
 
             thrusts_des = self._B_allocation_inv @ th.vstack([gross_thrust_des, body_torque_des])
@@ -344,7 +357,7 @@ class Dynamics:
                 m = 0.5 * (R_des[..., i].T @ R[..., i] - R[..., i].T @ R_des[..., i])
                 pose_err[:, i] = -th.as_tensor([-m[1, 2], m[0, 2], -m[0, 1]], device=self.device)
 
-                ang_vel_err[:, i] = (R_des[..., i].T @ R[..., i] @ th.tensor([[0], [0], [yaw_spd_des[i]]]).squeeze() - self._angular_velocity[:, i])
+                ang_vel_err[:, i] = (R_des[..., i].T @ R[..., i] @ th.tensor([[0], [0], [yaw_spd_des[i]]], device=self.device).squeeze() - self._angular_velocity[:, i])
             body_torque_des = self._inertia @ (self._BODYRATE_PID.p @ pose_err + self._BODYRATE_PID.p @ ang_vel_err - cross(self._angular_velocity, self._angular_velocity))
 
             thrusts_des = self._B_allocation_inv @ th.vstack([gross_thrust_des, body_torque_des])

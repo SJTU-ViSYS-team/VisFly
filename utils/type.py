@@ -118,6 +118,9 @@ class TensorDict(dict):
         elif isinstance(key, int):
             return TensorDict({k: v[key] for k, v in self.items()})
         elif hasattr(key, "__iter__"):
+            # Convert key to CPU if it's a tensor to avoid device mismatch
+            if hasattr(key, 'cpu'):
+                key = key.cpu()
             return TensorDict({k: v[key] for k, v in self.items()})
         else:
             raise TypeError("Invalid key type. Must be either str or int.")

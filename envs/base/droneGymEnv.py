@@ -169,12 +169,25 @@ class DroneGymEnvsBase(VecEnv):
         self._failure = self.get_failure()
 
         # update _rewards
-        if self._indiv_rewards is None:
-            self._reward = self.get_reward()
+        reward_result = self.get_reward()
+        if isinstance(reward_result, dict):
+            self._reward = reward_result["reward"]
+            # Handle individual reward components if present
+            if self._indiv_rewards is None:
+                self._indiv_rewards = {}
+                for key, value in reward_result.items():
+                    if key != "reward":
+                        self._indiv_rewards[key] = th.zeros((self.num_agent,))
+            for key, value in reward_result.items():
+                if key != "reward" and key in self._indiv_rewards:
+                    self._indiv_rewards[key] += value
+        elif isinstance(reward_result, tuple):
+            self._reward, indiv_reward = reward_result
+            if self._indiv_rewards is not None:
+                for key in indiv_reward.keys():
+                    self._indiv_rewards[key] += indiv_reward[key]
         else:
-            self._reward, indiv_reward = self.get_reward()
-            for key in indiv_reward.keys():
-                self._indiv_rewards[key] += indiv_reward[key]
+            self._reward = reward_result
         self._rewards += self._reward
 
         # update collision, timeout _done
@@ -191,6 +204,9 @@ class DroneGymEnvsBase(VecEnv):
             # i don't know why, but whatever this returned info data address should be strictly independent with torch.
             if self._done[indice]:
                 self._info[indice] = self.collect_info(indice, self._observations)
+            else:
+                # Ensure episode_done is always available for all agents
+                self._info[indice]["episode_done"] = self._episode_done[indice].clone().detach()
 
         # return and auto-reset
         _done, _reward, _info = self._done.clone(), self._reward.clone(), self._info.copy()
@@ -236,7 +252,7 @@ class DroneGymEnvsBase(VecEnv):
         }
         if self.requires_grad:
             _info["terminal_observation"] = {
-                key: observations[key][indice].detach() for key in observations.keys()
+                key: observations[key][indice].detach() if hasattr(observations[key][indice], 'detach') else observations[key][indice] for key in observations.keys()
             }
         else:
             _info["terminal_observation"] = {
@@ -280,14 +296,21 @@ class DroneGymEnvsBase(VecEnv):
         self._action = self._action.clone().detach()
         self._step_count = self._step_count.clone().detach()
         self._done = self._done.clone().detach()
-        self.latent = self.latent.clone().detach()
+        if hasattr(self, 'latent'):
+            self.latent = self.latent.clone().detach()
 
     def reset(self, state=None, obs=None, is_test=False):
         self.envs.reset()
 
-        if isinstance(self.get_reward(), tuple):
-            self._indiv_rewards: dict = self.get_reward()[1]
-            self._indiv_rewards = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
+        reward_result = self.get_reward()
+        if isinstance(reward_result, tuple):
+            self._indiv_rewards: dict = reward_result[1]
+            self._indiv_rewards = {key: th.zeros((self.num_agent,), device=self.device) for key in self._indiv_rewards.keys()}
+        elif isinstance(reward_result, dict):
+            self._indiv_rewards = {}
+            for key in reward_result.keys():
+                if key != "reward":
+                    self._indiv_rewards[key] = th.zeros((self.num_agent,), device=self.device)
         else:
             self._indiv_rewards = None
         self.get_full_observation()
@@ -326,11 +349,11 @@ class DroneGymEnvsBase(VecEnv):
 
     def _reset_attr(self, indices=None):
         if indices is None:
-            self._reward = th.zeros((self.num_agent,))
-            self._rewards = th.zeros((self.num_agent,))
-            self._done = th.zeros(self.num_agent, dtype=bool)
-            self._episode_done = th.zeros(self.num_agent, dtype=bool)
-            self._step_count = th.zeros((self.num_agent,), dtype=th.int32)
+            self._reward = th.zeros((self.num_agent,), device=self.device)
+            self._rewards = th.zeros((self.num_agent,), device=self.device)
+            self._done = th.zeros(self.num_agent, dtype=bool, device=self.device)
+            self._episode_done = th.zeros(self.num_agent, dtype=bool, device=self.device)
+            self._step_count = th.zeros((self.num_agent,), dtype=th.int32, device=self.device)
             if self.deter is not None:
                 if hasattr(self, "latent_reset_func"):
                     latent = self.latent_reset_func(self.num_agent)
@@ -350,7 +373,7 @@ class DroneGymEnvsBase(VecEnv):
                     self.stoch = th.zeros_like(self.stoch, device=self.device)
             if self._indiv_rewards is not None:
                 for key in self._indiv_rewards.keys():
-                    self._indiv_rewards[key] = th.zeros((self.num_agent,))
+                    self._indiv_rewards[key] = th.zeros((self.num_agent,), device=self.device)
         else:
             self._reward[indices] = 0
             self._rewards[indices] = 0

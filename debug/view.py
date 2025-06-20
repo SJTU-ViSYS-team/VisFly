@@ -1,3 +1,7 @@
+import os
+import sys
+sys.path.append('..')
+
 from VisFly.envs.NavigationEnv import NavigationEnv2
 import cv2 as cv
 import torch as th

@@ -5,7 +5,7 @@ algorithm:
     features_extractor_kwargs:
       net_arch:
         state:
-          mlp_layer: [192]
+          layer: [192]
 
     net_arch:
       pi: [192, 96]
@@ -27,7 +27,8 @@ env:
   scene_kwargs:
     path: VisFly/datasets/spy_datasets/configs/garage_empty
   visual: False
-  device: cpu
+  device: cuda
+  tensor_output: True
 
 learn:
   total_timesteps: 4000000

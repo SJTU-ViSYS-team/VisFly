@@ -12,21 +12,16 @@ class ObjectManager:
             self,
             scene_handle,
             dt,
-            object_scene_handle=None,
             object_path=None,
             isolated=False,
             device=th.device("cpu")
 
     ):
         """
-
         Args:
-            num_scene: num of scenes
             dt: time interval
-            object_scene_handle: object handles in habitat-sim if vision is available
         """
-        self.num_scene = sc
-        self.handles = object_scene_handle
+        self.scene_handle = scene_handle
         self.dt = dt
 
         self._position = None
