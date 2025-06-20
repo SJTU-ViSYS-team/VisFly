@@ -26,7 +26,7 @@ class DroneGymEnvsBase(VecEnv):
             requires_grad: bool = False,
             scene_kwargs: Optional[Dict] = {},
             sensor_kwargs: Optional[List] = [],
-            tensor_output: bool = False,
+            tensor_output: bool = True,
             is_train: bool = False,
     ):
 
@@ -147,13 +147,18 @@ class DroneGymEnvsBase(VecEnv):
         self._done = th.zeros(self.num_agent, dtype=bool)
         self._info = [{"TimeLimit.truncated": False} for _ in range(self.num_agent)]
 
+        # For convenience of intuitive visualization of reward components
         self._indiv_rewards = None
+        self._indiv_reward = None
         self.max_episode_steps = max_episode_steps
 
         # necessary for gym compatibility
         self.render_mode = ["None" for _ in range(self.num_agent)]
 
+        self._is_initial = False
+
     def step(self, _action, is_test=False, latent_func=None):
+        assert self._is_initial, "You should call reset() before step()"
         self._action = _action if isinstance(_action, th.Tensor) else th.as_tensor(_action)
         assert self._action.max() <= 1 and self._action.min() >= -1
         # update state and observation and _done
@@ -169,25 +174,14 @@ class DroneGymEnvsBase(VecEnv):
         self._failure = self.get_failure()
 
         # update _rewards
-        reward_result = self.get_reward()
-        if isinstance(reward_result, dict):
-            self._reward = reward_result["reward"]
-            # Handle individual reward components if present
-            if self._indiv_rewards is None:
-                self._indiv_rewards = {}
-                for key, value in reward_result.items():
-                    if key != "reward":
-                        self._indiv_rewards[key] = th.zeros((self.num_agent,))
-            for key, value in reward_result.items():
-                if key != "reward" and key in self._indiv_rewards:
-                    self._indiv_rewards[key] += value
-        elif isinstance(reward_result, tuple):
-            self._reward, indiv_reward = reward_result
-            if self._indiv_rewards is not None:
-                for key in indiv_reward.keys():
-                    self._indiv_rewards[key] += indiv_reward[key]
+        if self._indiv_reward is None:
+            self._reward = self.get_reward()
         else:
-            self._reward = reward_result
+            self._indiv_reward = self.get_reward()
+            assert isinstance(self._indiv_reward, dict) and "reward" in self._indiv_reward.keys()
+            self._reward = self._indiv_reward["reward"]
+            for key in self._indiv_reward.keys():
+                self._indiv_rewards[key] += self._indiv_reward[key]
         self._rewards += self._reward
 
         # update collision, timeout _done
@@ -202,11 +196,9 @@ class DroneGymEnvsBase(VecEnv):
         for indice in range(self.num_agent):
             # self._info[indice]["state"]= full_state[indice].cpu().clone().detach().numpy()
             # i don't know why, but whatever this returned info data address should be strictly independent with torch.
+            self._info[indice]["episode_done"] = self._episode_done[indice].clone().detach()
             if self._done[indice]:
                 self._info[indice] = self.collect_info(indice, self._observations)
-            else:
-                # Ensure episode_done is always available for all agents
-                self._info[indice]["episode_done"] = self._episode_done[indice].clone().detach()
 
         # return and auto-reset
         _done, _reward, _info = self._done.clone(), self._reward.clone(), self._info.copy()
@@ -262,7 +254,6 @@ class DroneGymEnvsBase(VecEnv):
         if self._step_count[indice] >= self.max_episode_steps:
             _info["TimeLimit.truncated"] = True
         _info["episode"]["extra"] = {}
-        _info["episode_done"] = self._episode_done[indice].clone().detach()
 
         if self._indiv_rewards is not None:
             for key in self._indiv_rewards.keys():
@@ -282,10 +273,6 @@ class DroneGymEnvsBase(VecEnv):
         if world:
             setattr(self, "world", world)
 
-    # def set_latent(self, deter, stoch):
-    #     self.deter = deter
-    #     self.stoch = stoch
-
     def detach(self):
         self.envs.detach()
         self.simple_detach()
@@ -300,29 +287,26 @@ class DroneGymEnvsBase(VecEnv):
             self.latent = self.latent.clone().detach()
 
     def reset(self, state=None, obs=None, is_test=False):
+        self._is_initial = True
+
         self.envs.reset()
 
-        reward_result = self.get_reward()
-        if isinstance(reward_result, tuple):
-            self._indiv_rewards: dict = reward_result[1]
-            self._indiv_rewards = {key: th.zeros((self.num_agent,), device=self.device) for key in self._indiv_rewards.keys()}
-        elif isinstance(reward_result, dict):
-            self._indiv_rewards = {}
-            for key in reward_result.keys():
-                if key != "reward":
-                    self._indiv_rewards[key] = th.zeros((self.num_agent,), device=self.device)
-        else:
+        if isinstance(self.get_reward(), dict):
+            self._indiv_reward: dict = self.get_reward()
+            self._indiv_rewards = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
+            self._indiv_reward = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
+        elif isinstance(self.get_reward(), th.Tensor):
             self._indiv_rewards = None
+            self._indiv_reward = None
+
+        else:
+            raise ValueError("get_reward should return a dict or a tensor, but got {}".format(type(self.get_reward())))
+
         self.get_full_observation()
         self._reset_attr()
         self.get_full_observation()
 
         return self._observations
-        #
-        # if not self.tensor_output:
-        #     return self.get_full_observation()
-        # else:
-        #     return self.get_full_observation()
 
     def reset_env_by_id(self, scene_indices=None):
         assert not isinstance(scene_indices, bool)
@@ -347,6 +331,7 @@ class DroneGymEnvsBase(VecEnv):
         else:
             return obs
 
+    @th.no_grad()
     def _reset_attr(self, indices=None):
         if indices is None:
             self._reward = th.zeros((self.num_agent,), device=self.device)
@@ -355,11 +340,11 @@ class DroneGymEnvsBase(VecEnv):
             self._episode_done = th.zeros(self.num_agent, dtype=bool, device=self.device)
             self._step_count = th.zeros((self.num_agent,), dtype=th.int32, device=self.device)
             if self.deter is not None:
-                if hasattr(self, "latent_reset_func"):
-                    latent = self.latent_reset_func(self.num_agent)
-                    # self.stoch, self.deter = latent["stoch"], latent["deter"]
-                    next_stoch, next_deter = self.latent_func(
-                        action=th.zeros((self.num_agent, 4), device=self.latent_func.device),
+                if hasattr(self, "world"):
+                    latent = self.world.sequence_model.initial(self.num_agent)
+                    # next_deter, next_stoch_post = latent["deter"], latent["stoch"]
+                    next_stoch, next_deter = self.world.sequence_model(
+                        action=th.zeros((self.num_agent, 4), device=self.world.sequence_model.device),
                         stoch=latent["stoch"],
                         deter=latent["deter"],
                         deterministic=False
@@ -367,13 +352,15 @@ class DroneGymEnvsBase(VecEnv):
                     next_stoch_post = self.world.encoder(observation=self._observations,
                                                                  deter=next_deter,
                                                                  deterministic=False)
-                    self.deter, self.stoch = next_deter, next_stoch_post
+                    self.deter, self.stoch = next_deter.to(self.device), next_stoch_post.to(self.device)
                 else:
                     self.deter = th.zeros_like(self.deter, device=self.device)
                     self.stoch = th.zeros_like(self.stoch, device=self.device)
             if self._indiv_rewards is not None:
                 for key in self._indiv_rewards.keys():
                     self._indiv_rewards[key] = th.zeros((self.num_agent,), device=self.device)
+                    self._indiv_reward[key] = th.zeros((self.num_agent,), device=self.device)
+
         else:
             self._reward[indices] = 0
             self._rewards[indices] = 0
@@ -381,17 +368,28 @@ class DroneGymEnvsBase(VecEnv):
             self._episode_done[indices] = False
             self._step_count[indices] = 0
             if self.deter is not None:
-                if hasattr(self, "latent_reset_func"):
-                    latent = self.latent_reset_func(len(indices))
-                    self.stoch[indices], self.deter[indices] = \
-                        latent["stoch"].to(self.device).detach().clone(),\
-                        latent["deter"].to(self.device).detach().clone()
+                if hasattr(self, "world"):
+                    latent = self.world.sequence_model.initial(len(indices))
+                    # self.stoch[indices], self.deter[indices] = \
+                    #     latent["stoch"].to(self.device).detach().clone(),\
+                    #     latent["deter"].to(self.device).detach().clone()
+                    next_stoch, next_deter = self.world.sequence_model(
+                        action=th.zeros((len(indices), 4), device=self.world.sequence_model.device),
+                        stoch=latent["stoch"],
+                        deter=latent["deter"],
+                        deterministic=False
+                    )
+                    next_stoch_post = self.world.encoder(observation=self._observations[indices],
+                                                                 deter=next_deter,
+                                                                 deterministic=False)
+                    self.deter[indices], self.stoch[indices] = next_deter.to(self.device), next_stoch_post.to(self.device)
                 else:
                     self.deter[indices] = 0
                     self.stoch[indices] = 0
             if self._indiv_rewards is not None:
                 for key in self._indiv_rewards.keys():
                     self._indiv_rewards[key][indices] = 0
+                    self._indiv_reward[key][indices] = 0
 
         indices = range(self.num_agent) if indices is None else indices
         for indice in indices:
