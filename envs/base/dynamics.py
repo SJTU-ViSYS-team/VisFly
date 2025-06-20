@@ -31,11 +31,12 @@ class Dynamics:
             dt: float = 0.005,
             ctrl_dt: float = 0.03,
             ctrl_delay: bool = True,
-            comm_delay: float = 0.09,
+            comm_delay: float = 0.06,
             action_space: Tuple[float, float] = (-1, 1),
             device: th.device = th.device("cpu"),
             integrator: str = "euler",
             drag_random: float = 0,
+            cfg: str = "example",
     ):
         assert action_type in ["bodyrate", "thrust", "velocity", "position"]  # 对两个变量进行断言检查
         assert ori_output_type in ["quaternion", "euler"]
@@ -77,7 +78,7 @@ class Dynamics:
 
         # initialization
         self.set_seed(seed)
-        self._init()
+        self._init(cfg=cfg)
         self._get_scale_factor(action_space)
         self._set_device(device)
 
@@ -86,8 +87,8 @@ class Dynamics:
         
         self._drag_random = drag_random
 
-    def _init(self):
-        self.load(os.path.dirname(__file__) + "/../../configs/example.json")
+    def _init(self, cfg):
+        self.load(os.path.dirname(__file__) + f"/../../configs/{cfg}.json")
         t_BM_ = (
                 self._arm_length
                 * th.tensor(0.5).sqrt()

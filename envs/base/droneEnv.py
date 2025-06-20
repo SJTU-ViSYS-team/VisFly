@@ -50,6 +50,7 @@ class DroneEnvsBase:
             num=num_agent_per_scene * num_scene,
             seed=seed,
             device=device,
+            drag_random=random_kwargs.get("drag_random", 0.),
             **dynamics_kwargs
         )
         self._create_noise_model()
