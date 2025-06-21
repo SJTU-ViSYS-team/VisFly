@@ -13,7 +13,8 @@ class Test(TestBase):
                  name,
                  save_path: Optional[str] = None,
                  ):
-        super(Test, self).__init__(model, name, save_path, )
+        # Ensure TestBase receives env and model correctly
+        super(Test, self).__init__(env=model.env, model=model, name=name, save_path=save_path)
 
     def draw(self, names=None):
         state_data = [obs["state"] for obs in self.obs_all]
@@ -42,4 +43,4 @@ class Test(TestBase):
         axes.set_ylabel("closest distance/m")
         plt.show()
 
-        return [fig, fig2]
+        return [fig, fig2] 
