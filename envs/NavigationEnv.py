@@ -85,8 +85,16 @@ class NavigationEnv(DroneGymEnvsBase):
         # precise and stable target flight
         base_r = 0.1
         thrd_perce = th.pi / 18
+        # horizontal alignment towards target in x-y plane
+        horiz_vel = self.velocity[:, :2]
+        horiz_vec = self.target[:, :2] - self.position[:, :2]
+        horiz_reward = ((horiz_vel * horiz_vec).sum(dim=1) / (1e-6 + horiz_vec.norm(dim=1))).clamp_max(10) * 0.01
+        # vertical penalty to discourage free-fall (penalize downward z-velocity)
+        vert_v = self.velocity[:, 2]
+        # only penalize if velocity is downwards (negative)
+        vert_penalty = (-vert_v).clamp(min=0) * 0.02
         reward = base_r * 0 + \
-                 ((self.velocity * (self.target - self.position)).sum(dim=1) / (1e-6 + (self.target - self.position).norm(dim=1))).clamp_max(10) * 0.01 + \
+                 horiz_reward - vert_penalty + \
                  (((self.direction * self.velocity).sum(dim=1) / (1e-6 + self.velocity.norm(dim=1)) / 1).clamp(-1., 1.).acos().clamp_min(thrd_perce) - thrd_perce) * -0.01 + \
                  (self.orientation - th.tensor([1, 0, 0, 0])).norm(dim=1) * -0.00001 + \
                  (self.velocity - 0).norm(dim=1) * -0.002 + \

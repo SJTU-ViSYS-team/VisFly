@@ -181,12 +181,24 @@ class DroneGymEnvsBase(VecEnv):
             assert isinstance(self._indiv_reward, dict) and "reward" in self._indiv_reward.keys()
             self._reward = self._indiv_reward["reward"]
             for key in self._indiv_reward.keys():
-                self._indiv_rewards[key] += self._indiv_reward[key]
+                # Ensure device compatibility by moving reward tensor to same device as accumulated rewards
+                reward_tensor = self._indiv_reward[key]
+                if hasattr(reward_tensor, 'to'):
+                    reward_tensor = reward_tensor.to(self._indiv_rewards[key].device)
+                self._indiv_rewards[key] += reward_tensor
+        
+        # Ensure _reward is on the same device as _rewards before addition
+        if hasattr(self._reward, 'to'):
+            self._reward = self._reward.to(self._rewards.device)
         self._rewards += self._reward
 
         # update collision, timeout _done
-        self._episode_done = self._episode_done | self._success | self._failure | \
-                             self.is_collision
+        # Ensure all boolean tensors are on the same device before logical operations
+        success = self._success.to(self._episode_done.device) if hasattr(self._success, 'to') else self._success
+        failure = self._failure.to(self._episode_done.device) if hasattr(self._failure, 'to') else self._failure
+        collision = self.is_collision.to(self._episode_done.device) if hasattr(self.is_collision, 'to') else self.is_collision
+        
+        self._episode_done = self._episode_done | success | failure | collision
         # self._episode_done = self._episode_done | self._success | self._failure
 
         self._done = self._episode_done | (self._step_count >= self.max_episode_steps)
@@ -236,6 +248,9 @@ class DroneGymEnvsBase(VecEnv):
             _info["is_success"] = True
         else:
             _info["is_success"] = False
+
+        # Add episode_done field that ABPT algorithm expects
+        _info["episode_done"] = self._episode_done[indice].clone().detach()
 
         _info["episode"] = {
             "r": self._rewards[indice].cpu().clone().detach().numpy(),
@@ -293,8 +308,8 @@ class DroneGymEnvsBase(VecEnv):
 
         if isinstance(self.get_reward(), dict):
             self._indiv_reward: dict = self.get_reward()
-            self._indiv_rewards = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
-            self._indiv_reward = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
+            self._indiv_rewards = {key: th.zeros((self.num_agent,), device=self.device) for key in self._indiv_reward.keys()}
+            self._indiv_reward = {key: th.zeros((self.num_agent,), device=self.device) for key in self._indiv_reward.keys()}
         elif isinstance(self.get_reward(), th.Tensor):
             self._indiv_rewards = None
             self._indiv_reward = None
@@ -413,7 +428,9 @@ class DroneGymEnvsBase(VecEnv):
 
     def examine(self):
         if self._done.any():
-            self.reset_agent_by_id(th.where(self._done)[0])
+            # Ensure indices are on CPU for compatibility with dynamics system
+            done_indices = th.where(self._done)[0].cpu()
+            self.reset_agent_by_id(done_indices)
         return self.get_full_observation()
 
     def render(self, **kwargs):
