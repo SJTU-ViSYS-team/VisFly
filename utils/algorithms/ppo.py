@@ -472,21 +472,16 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             actions = actions.cpu().numpy()
 
             # Rescale and perform action
-            clipped_actions = actions
-
             if isinstance(self.action_space, spaces.Box):
-                if self.policy.squash_output:
-                    # Unscale the actions to match env bounds
-                    # if they were previously squashed (scaled in [-1, 1])
-                    clipped_actions = self.policy.unscale_action(clipped_actions)
-                else:
-                    # Otherwise, clip the actions to avoid out of bound error
-                    # as we are sampling from an unbounded Gaussian distribution
-                    clipped_actions = np.clip(
-                        actions, self.action_space.low, self.action_space.high
-                    )
+                clipped_actions = np.clip(actions, self.action_space.low, self.action_space.high)
+            else:
+                clipped_actions = actions
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
+
+            # Ensure dones is a numpy array for the buffer
+            if isinstance(dones, th.Tensor):
+                dones = dones.cpu().numpy()
 
             self.num_timesteps += env.num_envs
 

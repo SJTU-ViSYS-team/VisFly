@@ -16,10 +16,11 @@ from VisFly.utils.launcher import rl_parser, training_params
 from VisFly.utils.type import Uniform
 from habitat_sim.sensor import SensorType
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 args = rl_parser().parse_args()
 """ SAVED HYPERPARAMETERS """
 training_params["num_env"] = 48
-training_params["learning_step"] = 1e6
+training_params["learning_step"] = 1e7
 training_params["comment"] = args.comment
 training_params["max_episode_steps"] = 256
 training_params["n_steps"] = training_params["max_episode_steps"]
@@ -76,13 +77,13 @@ def main():
                         "net_arch": {
                             "depth": {
                                 # "backbone": "mobilenet_s",
-                                "layer": [128],
+                                "mlp_layer": [128],
                             },
                             "state": {
-                                "layer": [128, 64],
+                                "mlp_layer": [128, 64],
                             },
                             "target": {
-                                "layer": [128, 64],
+                                "mlp_layer": [128, 64],
                             },
                             # "recurrent":{
                             #     "class": "GRU",
@@ -129,11 +130,6 @@ def main():
     else:
         test_model_path = save_folder + args.weight
         from test import Test
-        sensor_kwargs = [{
-            "sensor_type": SensorType.DEPTH,
-            "uuid": "depth",
-            "resolution": [64, 64],
-        }]
         env = NavigationEnv(num_agent_per_scene=1, visual=True,
                             random_kwargs=random_kwargs,
                             scene_kwargs={
@@ -146,11 +142,11 @@ def main():
                                     "position": th.tensor([[7., 6.8, 5.5], [7, 4.8, 4.5]]),
                                     "line_width": 6.,
 
-                                    "point": th.tensor([[9., 0, 1], [1, 0, 1]]),
+                                    # "point": th.tensor([[9., 0, 1], [1, 0, 1]]),
                                     "trajectory": True,
                                 }
                             },
-                            sensor_kwargs=sensor_kwargs)
+                            latent_dim=latent_dim)
 
         model = ppo.load(test_model_path, env=env)
 
@@ -158,9 +154,9 @@ def main():
             model=model,
             save_path=os.path.dirname(os.path.realpath(__file__)) + "/saved/test",
             name=args.weight)
-        test_handle.test(is_fig=True, is_fig_save=True, is_video=True, is_video_save=True,
+        test_handle.test(is_fig=True, is_fig_save=True, is_render=True, is_video=True, is_video_save=True,
                          render_kwargs={
-                             "points": th.tensor([[13., 0, 1], [1, 0, 1]])
+                             # "points": th.tensor([[13., 0, 1], [1, 0, 1]])
                          })
 
 

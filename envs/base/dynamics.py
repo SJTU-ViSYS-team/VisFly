@@ -87,8 +87,9 @@ class Dynamics:
         
         self._drag_random = drag_random
 
-    def _init(self):
-        self.load(os.path.dirname(__file__) + "/../../configs/example.json")
+
+    def _init(self, cfg = "example"):
+        self.load(os.path.join(os.path.dirname(__file__), "..", "..", "configs", f"{cfg}.json"))
         t_BM_ = (
                 self._arm_length
                 * th.tensor(0.5).sqrt()
@@ -207,8 +208,8 @@ class Dynamics:
                 self._pre_action[i][:, indices.cpu()] = self._pre_action[i][:, indices.cpu()] * 0
             
             if self._drag_random:
-                self._linear_drag_coeffs[:, indices] = self._linear_drag_coeffs_mean * ((th.rand_like(self._linear_drag_coeffs_mean[:,indices])-0.5)*2*self._drag_random).clamp(0.5, 1.5)
-                self._quad_drag_coeffs[:, indices] = self._quad_drag_coeffs_mean * ((th.rand_like(self._quad_drag_coeffs_mean[:,indices])-0.5)*2*self._drag_random).clamp(0.5, 1.5)
+                self._linear_drag_coeffs[:, indices] = self._linear_drag_coeffs_mean[:, indices] * ((th.rand_like(self._linear_drag_coeffs_mean[:, indices])-0.5)*2*self._drag_random).clamp(0.5, 1.5)
+                self._quad_drag_coeffs[:, indices] = self._quad_drag_coeffs_mean[:, indices] * ((th.rand_like(self._quad_drag_coeffs_mean[:, indices])-0.5)*2*self._drag_random).clamp(0.5, 1.5)
 
         return self.state
 
@@ -430,8 +431,15 @@ class Dynamics:
             data = json.load(f)
         self.m = th.tensor(data["mass"])
         self._cross_sections = th.tensor([data["cross_sections"]]).T  # 机体横截面积
-        self._quad_drag_coeffs_mean = th.tensor([data["quad_drag_coeffs"]]).T * 0.5 * 1.225 * self._cross_sections
-        self._linear_drag_coeffs_mean = th.tensor([data["linear_drag_coeffs"]]).T
+        # Fix: Repeat drag coeffs for each agent if needed
+        quad_drag = th.tensor([data["quad_drag_coeffs"]]).T * 0.5 * 1.225 * self._cross_sections
+        linear_drag = th.tensor([data["linear_drag_coeffs"]]).T
+        if quad_drag.shape[1] == 1:
+            quad_drag = quad_drag.repeat(1, self.num)
+        if linear_drag.shape[1] == 1:
+            linear_drag = linear_drag.repeat(1, self.num)
+        self._quad_drag_coeffs_mean = quad_drag
+        self._linear_drag_coeffs_mean = linear_drag
         self._inertia = th.tensor(data["inertia"])
         self.name = data["name"]
         self._BODYRATE_PID = PID(p=th.tensor(data["BODYRAYE_PID"]["p"]),
