@@ -169,31 +169,31 @@ class DroneGymEnvsBase(VecEnv):
         self._failure = self.get_failure()
 
         # update _rewards
-        reward_result = self.get_reward()
-        if isinstance(reward_result, dict):
-            self._reward = reward_result["reward"]
-            # Handle individual reward components if present
-            if self._indiv_rewards is None:
-                self._indiv_rewards = {}
-                sim_device = self.envs.device if hasattr(self.envs, 'device') else self.device
-                for key, value in reward_result.items():
-                    if key != "reward":
-                        self._indiv_rewards[key] = th.zeros((self.num_agent,), device=sim_device)
-            for key, value in reward_result.items():
-                if key != "reward" and key in self._indiv_rewards:
-                    self._indiv_rewards[key] += value.to(self._indiv_rewards[key].device)
-        elif isinstance(reward_result, tuple):
-            self._reward, indiv_reward = reward_result
-            if self._indiv_rewards is not None:
-                for key in indiv_reward.keys():
-                    self._indiv_rewards[key] += indiv_reward[key]
+        if self._indiv_reward is None:
+            self._reward = self.get_reward()
         else:
-            self._reward = reward_result
+            self._indiv_reward = self.get_reward()
+            assert isinstance(self._indiv_reward, dict) and "reward" in self._indiv_reward.keys()
+            self._reward = self._indiv_reward["reward"]
+            for key in self._indiv_reward.keys():
+                # Ensure device compatibility by moving reward tensor to same device as accumulated rewards
+                reward_tensor = self._indiv_reward[key]
+                if hasattr(reward_tensor, 'to'):
+                    reward_tensor = reward_tensor.to(self._indiv_rewards[key].device)
+                self._indiv_rewards[key] += reward_tensor
+        
+        # Ensure _reward is on the same device as _rewards before addition
+        if hasattr(self._reward, 'to'):
+            self._reward = self._reward.to(self._rewards.device)
         self._rewards += self._reward
 
         # update collision, timeout _done
-        self._episode_done = self._episode_done | self._success | self._failure | \
-                             self.is_collision
+        # Ensure all boolean tensors are on the same device before logical operations
+        success = self._success.to(self._episode_done.device) if hasattr(self._success, 'to') else self._success
+        failure = self._failure.to(self._episode_done.device) if hasattr(self._failure, 'to') else self._failure
+        collision = self.is_collision.to(self._episode_done.device) if hasattr(self.is_collision, 'to') else self.is_collision
+        
+        self._episode_done = self._episode_done | success | failure | collision
         # self._episode_done = self._episode_done | self._success | self._failure
 
         self._done = self._episode_done | (self._step_count >= self.max_episode_steps)
@@ -245,6 +245,9 @@ class DroneGymEnvsBase(VecEnv):
             _info["is_success"] = True
         else:
             _info["is_success"] = False
+
+        # Add episode_done field that ABPT algorithm expects
+        _info["episode_done"] = self._episode_done[indice].clone().detach()
 
         _info["episode"] = {
             "r": self._rewards[indice].cpu().clone().detach().numpy(),
@@ -303,21 +306,17 @@ class DroneGymEnvsBase(VecEnv):
     def reset(self, state=None, obs=None, is_test=False):
         self.envs.reset()
 
-        reward_result = self.get_reward()
-        if isinstance(reward_result, tuple):
-            self._indiv_rewards: dict = reward_result[1]
-            # Initialize individual rewards on simulation device
-            sim_device = self.envs.device if hasattr(self.envs, 'device') else self.device
-            self._indiv_rewards = {key: th.zeros((self.num_agent,), device=sim_device) for key in self._indiv_rewards.keys()}
-        elif isinstance(reward_result, dict):
-            # Initialize individual rewards on simulation device
-            self._indiv_rewards = {}
-            sim_device = self.envs.device if hasattr(self.envs, 'device') else self.device
-            for key in reward_result.keys():
-                if key != "reward":
-                    self._indiv_rewards[key] = th.zeros((self.num_agent,), device=sim_device)
-        else:
+        if isinstance(self.get_reward(), dict):
+            self._indiv_reward: dict = self.get_reward()
+            self._indiv_rewards = {key: th.zeros((self.num_agent,), device=self.device) for key in self._indiv_reward.keys()}
+            self._indiv_reward = {key: th.zeros((self.num_agent,), device=self.device) for key in self._indiv_reward.keys()}
+        elif isinstance(self.get_reward(), th.Tensor):
             self._indiv_rewards = None
+            self._indiv_reward = None
+
+        else:
+            raise ValueError("get_reward should return a dict or a tensor, but got {}".format(type(self.get_reward())))
+
         self.get_full_observation()
         self._reset_attr()
         self.get_full_observation()
@@ -361,17 +360,33 @@ class DroneGymEnvsBase(VecEnv):
         sim_device = self.envs.device if hasattr(self.envs, 'device') else self.device
 
         if indices is None:
-            self._step_count = th.zeros((self.num_agent,), dtype=th.int32, device=sim_device)
-            self._reward = th.zeros((self.num_agent,), device=sim_device)
-            self._rewards = th.zeros((self.num_agent,), device=sim_device)
-            self._action = th.zeros((self.num_agent, 4), device=sim_device)
-            self._observations = TensorDict({})
+            self._reward = th.zeros((self.num_agent,), device=self.device)
+            self._rewards = th.zeros((self.num_agent,), device=self.device)
+            self._done = th.zeros(self.num_agent, dtype=bool, device=self.device)
+            self._episode_done = th.zeros(self.num_agent, dtype=bool, device=self.device)
+            self._step_count = th.zeros((self.num_agent,), dtype=th.int32, device=self.device)
+            if self.deter is not None:
+                if hasattr(self, "world"):
+                    latent = self.world.sequence_model.initial(self.num_agent)
+                    # next_deter, next_stoch_post = latent["deter"], latent["stoch"]
+                    next_stoch, next_deter = self.world.sequence_model(
+                        action=th.zeros((self.num_agent, 4), device=self.world.sequence_model.device),
+                        stoch=latent["stoch"],
+                        deter=latent["deter"],
+                        deterministic=False
+                    )
+                    next_stoch_post = self.world.encoder(observation=self._observations,
+                                                                 deter=next_deter,
+                                                                 deterministic=False)
+                    self.deter, self.stoch = next_deter.to(self.device), next_stoch_post.to(self.device)
+                else:
+                    self.deter = th.zeros_like(self.deter, device=self.device)
+                    self.stoch = th.zeros_like(self.stoch, device=self.device)
+            if self._indiv_rewards is not None:
+                for key in self._indiv_rewards.keys():
+                    self._indiv_rewards[key] = th.zeros((self.num_agent,), device=self.device)
+                    self._indiv_reward[key] = th.zeros((self.num_agent,), device=self.device)
 
-            self._success = th.zeros(self.num_agent, dtype=th.bool, device=sim_device)
-            self._failure = th.zeros(self.num_agent, dtype=th.bool, device=sim_device)
-            self._episode_done = th.zeros(self.num_agent, dtype=th.bool, device=sim_device)
-            self._done = th.zeros(self.num_agent, dtype=th.bool, device=sim_device)
-            self._info = [{"TimeLimit.truncated": False} for _ in range(self.num_agent)]
         else:
             # These are in-place modifications, device is already correct.
             self._step_count[indices] = 0
@@ -392,6 +407,13 @@ class DroneGymEnvsBase(VecEnv):
                     self._indiv_rewards[key] = th.zeros((self.num_agent,), device=sim_device)
                 else:
                     self._indiv_rewards[key][indices] = 0
+                    self._indiv_reward[key][indices] = 0
+
+        indices = range(self.num_agent) if indices is None else indices
+        for indice in indices:
+            self._info[indice] = {
+                "TimeLimit.truncated": False,
+            }
 
     # def stack(self):
     #     self._stack_cache = (self._step_count.clone().detach(),
@@ -409,7 +431,9 @@ class DroneGymEnvsBase(VecEnv):
 
     def examine(self):
         if self._done.any():
-            self.reset_agent_by_id(th.where(self._done)[0])
+            # Ensure indices are on CPU for compatibility with dynamics system
+            done_indices = th.where(self._done)[0].cpu()
+            self.reset_agent_by_id(done_indices)
         return self.get_full_observation()
 
     def render(self, **kwargs):
