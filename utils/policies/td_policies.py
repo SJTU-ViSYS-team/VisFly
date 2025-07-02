@@ -212,7 +212,7 @@ class Actor(SAC_Actor):
 
     def forward(self, obs: PyTorchObs, deterministic: bool = False) -> th.Tensor:
         deterministic = self.deterministic if deterministic is None else deterministic
-
+        obs = obs_as_tensor(obs, device=self.device)
         mean_actions, log_std, kwargs, h = self.get_action_dist_params(obs)
         # Note: the action is squashed
         return self.action_dist.actions_from_params(mean_actions, log_std, deterministic=deterministic, **kwargs), h
@@ -246,6 +246,7 @@ class Actor(SAC_Actor):
 
     def action_log_prob(self, obs: PyTorchObs) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         # return action and associated log prob
+        obs = obs_as_tensor(obs, device=self.device)
         mean_actions, log_std, kwargs, h = self.get_action_dist_params(obs)
         return *self.action_dist.log_prob_from_params(mean_actions, log_std, **kwargs), h
 

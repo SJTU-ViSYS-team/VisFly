@@ -65,16 +65,16 @@ def main():
                         "net_arch": {
                             "depth": {
 
-                                "mlp_layer": [128],
+                                "layer": [128],
                             },
                             "state": {
-                                "mlp_layer": [128, 64],
+                                "layer": [128, 64],
                             },
                             "target": {
-                                "mlp_layer": [128, 64],
+                                "layer": [128, 64],
                             },
                             "swarm": {
-                                "mlp_layer": [128, 64],
+                                "layer": [128, 64],
                             }
                         }
                     },
