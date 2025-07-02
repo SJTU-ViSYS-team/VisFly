@@ -78,7 +78,7 @@ class TemporalDifferBase:
         self.device = th.device(device)
 
         self.env = env
-        self.env.to(self.device)
+        # self.env.to(self.device)
         self.num_envs = env.num_envs
         self.observation_space: spaces.Dict = env.observation_space
         self.action_space: spaces.Box = env.action_space

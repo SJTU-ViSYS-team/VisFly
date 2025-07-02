@@ -1,0 +1,20 @@
+{
+  "name": "object_target",
+  "initial":
+  {
+    "mode": "uniform",
+    "position": {
+      "mean": [5.0, 0, 3],
+      "half": [0.0, 0, 0]
+    },
+    "orientation": {
+      "mean": [0, 0, 0],
+      "half": [0, 0, 0]
+    }
+  },
+  "movement": {
+    "mode": "track",
+    "velocity": 1,
+    "angular_velocity": 0.5
+  }
+}

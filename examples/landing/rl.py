@@ -61,13 +61,13 @@ def main():
                     features_extractor_kwargs={
                         "net_arch": {
                             "color": {
-                                "mlp_layer": [128],
+                                "layer": [128],
                             },
                             "state": {
-                                "mlp_layer": [128, 64],
+                                "layer": [128, 64],
                             },
                             "target": {
-                                "mlp_layer": [128, 64],
+                                "layer": [128, 64],
                             }
                         }
                     },

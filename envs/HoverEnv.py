@@ -20,7 +20,7 @@ class HoverEnv(DroneGymEnvsBase):
             visual: bool = True,
             requires_grad: bool = False,
             random_kwargs: dict = None,
-            dynamics_kwargs: dict = None,
+            dynamics_kwargs: dict = {},
             scene_kwargs: dict = {},
             sensor_kwargs: list = [],
             device: str = "cpu",
@@ -67,11 +67,11 @@ class HoverEnv(DroneGymEnvsBase):
             "state": self.state,
         })
 
-        if self.latent is not None:
-            if not self.requires_grad:
-                obs["latent"] = self.latent.cpu().numpy()
-            else:
-                obs["latent"] = self.latent
+        # if self.latent is not None:
+        #     if not self.requires_grad:
+        #         obs["latent"] = self.latent.cpu().numpy()
+        #     else:
+        #         obs["latent"] = self.latent
 
         return obs
 

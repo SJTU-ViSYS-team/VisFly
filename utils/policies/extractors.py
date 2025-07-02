@@ -354,8 +354,7 @@ def set_recurrent_feature_extractor(cls, input_size, rnn_setting):
 
 
 def set_mlp_feature_extractor(cls, name, observation_space, net_arch, activation_fn):
-    # Support both "layer" and "mlp_layer" keys for backward compatibility
-    layer = net_arch.get("layer", net_arch.get("mlp_layer", []))
+    layer = net_arch.get("layer", [])
     features_dim = layer[-1] if len(layer) != 0 else observation_space.shape[0]
     if hasattr(observation_space, "shape"):
         input_dim = observation_space.shape[0] if len(observation_space.shape) == 1 else observation_space.shape[1]
@@ -452,8 +451,7 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
             )
         )
         _image_features_dims = _get_conv_output(image_extractor, observation_space.shape)
-        # Support both "layer" and "mlp_layer" keys for backward compatibility
-        layer = net_arch.get("layer", net_arch.get("mlp_layer", []))
+        layer = net_arch.get("layer", [])
         if len(layer) > 0:
             image_extractor.add_module("mlp",
                                        create_mlp(
