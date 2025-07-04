@@ -111,6 +111,11 @@ class HoverEnv2(HoverEnv):
             max_episode_steps: int = 256,
             tensor_output: bool = False,
     ):
+        sensor_kwargs = [{
+            "sensor_type": SensorType.DEPTH,
+            "uuid": "depth",
+            "resolution": [64, 64],
+        }]
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
             num_scene=num_scene,
@@ -141,7 +146,7 @@ class HoverEnv2(HoverEnv):
 
         return TensorDict({
             "state": state,
-            # "depth": th.as_tensor(self.sensor_obs["depth"]/10).clamp(max=1)
+            "depth": th.as_tensor(self.sensor_obs["depth"]/10).clamp(max=1)
         })
 
 

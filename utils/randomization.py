@@ -204,3 +204,33 @@ class UnionRandomizer:
         select_randomizer_index = th.randint(0, len(self.randomizers), (num,))
         row = th.arange(num)
         return position[select_randomizer_index, row, :], orientation[select_randomizer_index, row, :], velocity[select_randomizer_index, row, :], angular_velocity[select_randomizer_index, row, :]
+
+
+def load_generator(cls, kwargs, is_collision_func=None, scene_id=None, device="cpu"):
+    cls_alias = {
+        "Uniform": UniformStateRandomizer,
+        "Normal": NormalStateRandomizer,
+        "Union": UnionRandomizer
+    }
+
+    if isinstance(cls, str):
+        cls = cls_alias[cls]
+
+    return cls(is_collision_func=is_collision_func, scene_id=scene_id, device=device, **kwargs)
+
+
+def load_dist(data):
+    cls_alias = {
+        "Uniform": Uniform,
+        "Normal": Normal,
+    }
+    if not isinstance(data, dict):
+        kwargs = {
+            "mean": data,
+            "half": 0.
+        }
+        cls = Uniform
+    else:
+        cls = cls_alias[data["class"]]
+        kwargs = data["kwargs"]
+    return cls(**kwargs)

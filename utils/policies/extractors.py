@@ -1,16 +1,13 @@
 from abc import abstractmethod
-from distutils.dist import Distribution
 
 import torch as th
 import torch.nn as nn
 import numpy as np
-from stable_baselines3.common.policies import ActorCriticPolicy, MultiInputActorCriticPolicy
 from typing import Tuple, Callable, Any
 from gym import spaces
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, CombinedExtractor
 from typing import List, Optional, Type, Union, Dict
 
-from stable_baselines3.common.type_aliases import Schedule, PyTorchObs
 from torch import Tensor
 from torchvision import models
 
@@ -116,6 +113,68 @@ def calc_required_input_dim(net, target_output_shape):
 
     # Return HWC format
     return (curr_c, curr_h, curr_w,)
+
+
+def compute_required_input_shape(
+    net: nn.Module,
+    desired_out: Tuple[int, int, int]
+) -> Tuple[int, int, int]:
+    """
+    反向遍历网络，逐层还原所需的输入 (C, H, W)。
+    """
+
+    def _invert_size(o: int, k: int, s: int, p: int,
+                     d: int, op: int) -> int:
+        """
+        单层 ConvTranspose2d 的逆向尺寸公式：
+            o = (i - 1) * s - 2p + d*(k - 1) + op + 1
+        反推：
+            i = (o - 1 - d*(k - 1) - op + 2p) / s + 1
+        """
+        num = o - 1 - d * (k - 1) - op + 2 * p
+        if num % s:
+            raise ValueError(
+                f'无法整除：({o}-1-{d}*({k}-1)-{op}+2*{p}) 不能被 stride={s} 整除')
+        return num // s + 1
+
+    C_out, H, W = desired_out
+    # 仅保留 ConvTranspose2d 层，保持拓扑顺序
+    deconv_layers = [
+        m for m in net.modules() if isinstance(m, nn.ConvTranspose2d)
+    ]
+
+    if not deconv_layers:
+        raise ValueError("网络中未找到 nn.ConvTranspose2d 层")
+
+    # 验证最后一层输出通道
+    last_layer = deconv_layers[-1]
+    if last_layer.out_channels != C_out:
+        raise ValueError(
+            f"期望输出通道 {C_out} 与网络最后一层 "
+            f"out_channels={last_layer.out_channels} 不一致"
+        )
+
+    # 逆序推回输入空间尺寸
+    for layer in reversed(deconv_layers):
+        H = _invert_size(
+            H,
+            k=layer.kernel_size[0],
+            s=layer.stride[0],
+            p=layer.padding[0],
+            d=layer.dilation[0],
+            op=layer.output_padding[0]
+        )
+        W = _invert_size(
+            W,
+            k=layer.kernel_size[1],
+            s=layer.stride[1],
+            p=layer.padding[1],
+            d=layer.dilation[1],
+            op=layer.output_padding[1]
+        )
+
+    C_in = deconv_layers[0].in_channels  # 第一层（逆向后）输入通道
+    return (C_in, H, W)
 
 
 class AutoTransDimBatchNorm1d(nn.BatchNorm1d):
@@ -391,82 +450,56 @@ def set_trans_cnn_feature_extractor(cls, name, input_dim, target_shape, net_arch
 
 
 def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation_fn):
+    backbone_alias: Dict = {
+        "resnet18": models.resnet18,
+        "resnet34": models.resnet34,
+        "resnet50": models.resnet50,
+        "resnet101": models.resnet101,
+        "efficientnet_l": models.efficientnet_v2_l,
+        "efficientnet_m": models.efficientnet_v2_m,
+        "efficientnet_s": models.efficientnet_v2_s,
+        "mobilenet_l": models.mobilenet_v3_large,
+        "mobilenet_s": models.mobilenet_v3_small,
+    }
     image_channels = observation_space.shape[0]
     backbone = net_arch.get("backbone", None)
+    modules = []
     if backbone is not None:
-        image_extractor = cls.backbone_alias[backbone](pretrained=True)
-        # replace the first layer to match the input channels
-        if "resnet" in backbone:
-            image_extractor.conv1 = nn.Conv2d(image_channels, image_extractor.conv1.out_channels,
-                                              kernel_size=image_extractor.conv1.kernel_size,
-                                              stride=image_extractor.conv1.stride,
-                                              padding=image_extractor.conv1.padding,
-                                              bias=image_extractor.conv1.bias is not None)
-            if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
-                image_extractor.fc, output_dim = create_mlp(
-                    input_dim=image_extractor.fc.in_features,
-                    activation_fn=activation_fn,
-                    **net_arch
-                )
-        elif "efficientnet" in backbone:
-            image_extractor.features[0][0] = nn.Conv2d(image_channels, image_extractor.features[0][0].out_channels,
-                                                       kernel_size=image_extractor.features[0][0].kernel_size,
-                                                       stride=image_extractor.features[0][0].stride,
-                                                       padding=image_extractor.features[0][0].padding,
-                                                       bias=image_extractor.features[0][0].bias is not None)
-
-            if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
-                image_extractor.classifier[-1], output_dim = create_mlp(
-                    input_dim=image_extractor.classifier[-1].in_features,
-                    activation_fn=activation_fn,
-                    **net_arch
-                )
-        elif "mobilenet" in backbone:
-            image_extractor.features[0][0] = nn.Conv2d(image_channels, image_extractor.features[0][0].out_channels,
-                                                       kernel_size=image_extractor.features[0][0].kernel_size,
-                                                       stride=image_extractor.features[0][0].stride,
-                                                       padding=image_extractor.features[0][0].padding,
-                                                       bias=image_extractor.features[0][0].bias is not None)
-            if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
-                image_extractor.classifier[-1], output_dim = create_mlp(
-                    input_dim=image_extractor.classifier[-1].in_features,
-                    activation_fn=activation_fn,
-                    **net_arch
-                )
-        else:
-            raise ValueError("Backbone not supported.")
-
+        pre_process_layer = nn.Conv2d(image_channels, 3,
+                                              kernel_size=3,
+                                              stride=1,
+                                              padding=1,
+                                              bias=True)
+        modules.append(pre_process_layer)
+        image_extractor = backbone_alias[backbone](pretrained=True)
     else:
-        image_extractor = (
-            create_cnn(
-                input_channels=image_channels,
-                kernel_size=net_arch.get("kernel_size", [5, 3, 3]),
-                channel=net_arch.get("channel", [6, 12, 18]),
-                activation_fn=activation_fn,
-                padding=net_arch.get("padding", [0, 0, 0]),
-                stride=net_arch.get("stride", [1, 1, 1]),
-                bn=net_arch.get("bn", False),
-                ln=net_arch.get("ln", False),
-                bias=net_arch.get("bias", True),
-            )
+        image_extractor = create_cnn(
+            input_channels=image_channels,
+            kernel_size=net_arch.get("kernel_size", [5, 3, 3]),
+            channel=net_arch.get("channel", [6, 12, 18]),
+            activation_fn=activation_fn,
+            padding=net_arch.get("padding", [0, 0, 0]),
+            stride=net_arch.get("stride", [1, 1, 1]),
+            bn=net_arch.get("bn", False),
+            ln=net_arch.get("ln", False),
+            bias=net_arch.get("bias", True),
         )
-        _image_features_dims = _get_conv_output(image_extractor, observation_space.shape)
-        layer = net_arch.get("layer", [])
-        if len(layer) > 0:
-            image_extractor.add_module("mlp",
-                                       create_mlp(
-                                           input_dim=_image_features_dims,
-                                           layer=layer,
-                                           activation_fn=activation_fn,
-                                           bn=net_arch.get("bn", False),
-                                           ln=net_arch.get("ln", False)
-                                       )[0]
-                                       )
-            # After adding MLP, the output dimension changes to the last layer size
-            _image_features_dims = layer[-1]
-    setattr(cls, name + "_extractor", image_extractor)
+    modules.append(image_extractor)
+    cache_net = nn.Sequential(*modules)
+    conv_output = _get_conv_output(cache_net, observation_space.shape)
+    aft_process_layer, _output_dim = create_mlp(
+                                       input_dim=conv_output,
+                                       layer=net_arch.get("layer",[]),
+                                       activation_fn=activation_fn,
+                                       bn=net_arch.get("bn", False),
+                                       ln=net_arch.get("ln", False)
+                                   )
+    modules.append(aft_process_layer)
+
+    net = nn.Sequential(*modules)
+    setattr(cls, name + "_extractor", net)
     cls._extract_names.append(name)
-    return _image_features_dims
+    return _output_dim
 
 
 class TargetExtractor(CustomBaseFeaturesExtractor):

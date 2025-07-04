@@ -196,7 +196,6 @@ class DroneGymEnvsBase(VecEnv):
         for indice in range(self.num_agent):
             # self._info[indice]["state"]= full_state[indice].cpu().clone().detach().numpy()
             # i don't know why, but whatever this returned info data address should be strictly independent with torch.
-            self._info[indice]["episode_done"] = self._episode_done[indice].clone().detach()
             if self._done[indice]:
                 self._info[indice] = self.collect_info(indice, self._observations)
 
@@ -232,6 +231,8 @@ class DroneGymEnvsBase(VecEnv):
 
     def collect_info(self, indice, observations):
         _info = {}
+
+        _info["episode_done"] = self._episode_done[indice].item()
         if self._success[indice]:
             _info["is_success"] = True
         else:
@@ -253,6 +254,9 @@ class DroneGymEnvsBase(VecEnv):
 
         if self._step_count[indice] >= self.max_episode_steps:
             _info["TimeLimit.truncated"] = True
+        else:
+            _info["TimeLimit.truncated"] = False
+
         _info["episode"]["extra"] = {}
 
         if self._indiv_rewards is not None:
@@ -321,9 +325,10 @@ class DroneGymEnvsBase(VecEnv):
     def reset_agent_by_id(self, agent_indices=None, state=None, reset_obs=None):
         assert ~(state is None and reset_obs is None) or (state is not None and reset_obs is not None)
         assert not isinstance(agent_indices, bool)
-        self._reset_attr(indices=agent_indices)
         self.envs.reset_agents(agent_indices, state=state)
-        return self.get_full_observation(agent_indices)
+        self.get_full_observation(agent_indices)
+        self._reset_attr(indices=agent_indices)
+        return self._observations
 
     def _format_obs(self, obs):
         if not self.tensor_output:
@@ -370,9 +375,6 @@ class DroneGymEnvsBase(VecEnv):
             if self.deter is not None:
                 if hasattr(self, "world"):
                     latent = self.world.sequence_model.initial(len(indices))
-                    # self.stoch[indices], self.deter[indices] = \
-                    #     latent["stoch"].to(self.device).detach().clone(),\
-                    #     latent["deter"].to(self.device).detach().clone()
                     next_stoch, next_deter = self.world.sequence_model(
                         action=th.zeros((len(indices), 4), device=self.world.sequence_model.device),
                         stoch=latent["stoch"],
@@ -414,7 +416,7 @@ class DroneGymEnvsBase(VecEnv):
     def examine(self):
         if self._done.any():
             self.reset_agent_by_id(th.where(self._done)[0])
-        return self.get_full_observation()
+        return self._observations
 
     def render(self, **kwargs):
         obs = self.envs.render(**kwargs)

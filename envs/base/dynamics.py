@@ -85,15 +85,14 @@ class Dynamics:
 
     def _init(self, cfg):
         self.load(os.path.dirname(__file__) + f"/../../configs/drone/{cfg}.json")
-        t_BM_ = (
-                self._arm_length
-                * th.tensor(0.5).sqrt()
-                * th.tensor([
+        motor_direction = th.tensor([
             [1, -1, -1, 1, ],
             [-1, -1, 1, 1],
-            [0, 0, 0, 0],
+            [0, 0, 0, 0.],
         ])
-        )
+        motor_direction = motor_direction / motor_direction.norm(dim=0)
+        t_BM_ = self._arm_length * motor_direction
+
         self._inertia = th.diag(self._inertia)
 
         self._inertia_inv = th.inverse(self._inertia)
@@ -178,7 +177,7 @@ class Dynamics:
             self._thrusts = th.ones((4, self.num), device=self.device) * self._init_thrust if thrusts is None else thrusts.T
             self._motor_omega = th.ones((4, self.num), device=self.device) * self._init_motor_omega if motor_omega is None else motor_omega.T
             self._t = th.zeros((self.num,), device=self.device) if t is None else t
-            # self._t = th.zeros((self.num,), device=self.device) + th.rand((self.num), device=self.device)*3.14*2 if t is None else t
+            self._t = th.zeros((self.num,), device=self.device) + th.rand((self.num), device=self.device)*3.14*2 if t is None else t
             # self._ctrl_i = th.zeros((3, self.num), device=self.device)
             self._angular_acc = th.zeros((3, self.num), device=self.device)
             self._acc = th.zeros((3, self.num), device=self.device)
@@ -195,7 +194,7 @@ class Dynamics:
             self._motor_omega[:, indices] = th.ones((4, len(indices)), device=self.device) * self._init_motor_omega if motor_omega is None else motor_omega.T
             self._thrusts[:, indices] = th.ones((4, len(indices)), device=self.device) * self._init_thrust if thrusts is None else thrusts.T
             self._t[indices] = th.zeros((len(indices),), device=self.device) if t is None else t
-            # self._t[indices] = th.zeros((len(indices),), device=self.device) + th.rand((len(indices),)) * 3.14*2 if t is None else t
+            self._t[indices] = th.zeros((len(indices),), device=self.device) + th.rand((len(indices),)) * 3.14*2 if t is None else t
             # self._ctrl_i[:, indices] = th.zeros((3, len(indices)), device=self.device)
             self._angular_acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
             self._acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
@@ -599,6 +598,14 @@ class Dynamics:
     @property
     def angular_velocity(self):
         return self._angular_velocity.T
+
+    @property
+    def acceleration(self):
+        return self._acc.T
+
+    @property
+    def angular_acceleration(self):
+        return self._angular_acc.T
 
     @property
     def t(self):

@@ -59,6 +59,9 @@ class DroneEnvsBase:
         if self.is_multi_drone and (num_agent_per_scene == 1):
             raise ValueError("Num of agents should not be 1 in multi drone env.")
 
+        if "obj_settings" in scene_kwargs:
+            scene_kwargs["obj_settings"]["dt"] = self.dynamics.ctrl_dt
+
         self.sceneManager: SceneManager = SceneManager(
             num_agent_per_scene=num_agent_per_scene,
             num_scene=num_scene,
@@ -351,6 +354,7 @@ class DroneEnvsBase:
         self.dynamics.step(action)
         if self.visual:
             self.sceneManager.set_pose(self.dynamics.position, self.dynamics._orientation.toTensor().T)
+            # self.sceneManager.step()
         self.update_observation()
         self.update_collision()
 
@@ -435,9 +439,13 @@ class DroneEnvsBase:
     def full_state(self):
         return self.dynamics.full_state
 
-    # @property
-    # def acceleration(self):
-    #     return self.dynamics.acceleration
+    @property
+    def acceleration(self):
+        return self.dynamics.acceleration
+
+    @property
+    def angular_acceleration(self):
+        return self.dynamics.angular_acceleration
 
     @property
     def collision_point(self):
@@ -450,3 +458,7 @@ class DroneEnvsBase:
     @property
     def collision_dis(self):
         return self._collision_dis
+
+    @property
+    def dynamic_object_position(self):
+        return self.sceneManager.dynamic_object_position
