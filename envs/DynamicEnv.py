@@ -28,7 +28,15 @@ class DynEnv(DroneGymEnvsBase):
             max_episode_steps: int = 256,
             tensor_output: bool = False,
     ):
-
+        # random_kwargs = {
+        #     "state_generator":
+        #         {
+        #             "class": "TargetUniform",
+        #             "kwargs": [
+        #                 {"position": {"mean": [1., 0., 1.5], "half": [0.0, 0.0, 0.3]}},
+        #             ]
+        #         }
+        # }
 
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,

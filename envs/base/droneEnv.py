@@ -3,7 +3,7 @@ from .dynamics import Dynamics
 from ...utils.ObjectManger import ObjectManager
 from ...utils.SceneManager import SceneManager
 from typing import List, Union, Tuple, Dict, Optional
-from ...utils.randomization import UniformStateRandomizer, NormalStateRandomizer, UnionRandomizer
+from ...utils.randomization import UniformStateRandomizer, NormalStateRandomizer, UnionRandomizer, load_generator, TargetUniformRandomizer
 from ...utils.type import Uniform, Normal
 from torch import Tensor
 from typing import Optional, Type
@@ -150,62 +150,66 @@ class DroneEnvsBase:
                                                     ]
                                                 }
                                                 )
-        state_generator_class = state_random_kwargs.get("class", UniformStateRandomizer)
-        if isinstance(state_generator_class, str):
-            state_generator_class = self.state_generator_alias.get(state_generator_class, None)
+        state_generator_class = state_random_kwargs.get("class", "Uniform")
+        # if isinstance(state_generator_class, str):
+        #     state_generator_class = self.state_generator_alias.get(state_generator_class, None)
 
         stateGenerators,generator_kwargs = [],[]
-        kwargs_list = state_random_kwargs.get("kwargs", [])
-        if issubclass(state_generator_class, UniformStateRandomizer):
-            generator_kwargs = [{
-                "position": kwarg.get("position"),
-                "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
-                "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
-                "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]})
-            } for kwarg in kwargs_list]
-        elif issubclass(state_generator_class, NormalStateRandomizer):
-            generator_kwargs = [{
-                "position": kwarg.get("position"),
-                "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
-                "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
-                "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]})
-            } for kwarg in kwargs_list]
-        elif issubclass(state_generator_class, UnionRandomizer):
-            # generator_kwargs = [kwarg.get("kwargs") for kwarg in kwargs_list]
-            generator_kwargs = kwargs_list
-            pass
-        else:
-            raise ValueError("State generator class is not available.")
+        kwargs_list = state_random_kwargs.get("kwargs", [{}])
+        generator_kwargs = kwargs_list
+        # if issubclass(state_generator_class, UniformStateRandomizer):
+        #     generator_kwargs = [{
+        #         "position": kwarg.get("position"),
+        #         "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
+        #         "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]}),
+        #         "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "half": [0., 0., 0.]})
+        #     } for kwarg in kwargs_list]
+        # elif issubclass(state_generator_class, NormalStateRandomizer):
+        #     generator_kwargs = [{
+        #         "position": kwarg.get("position"),
+        #         "orientation": kwarg.get("orientation", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
+        #         "velocity": kwarg.get("velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]}),
+        #         "angular_velocity": kwarg.get("angular_velocity", {"mean": [0., 0., 0.], "std": [0., 0., 0.]})
+        #     } for kwarg in kwargs_list]
+        # elif issubclass(state_generator_class, UnionRandomizer):
+        #     # generator_kwargs = [kwarg.get("kwargs") for kwarg in kwargs_list]
+        #     generator_kwargs = kwargs_list
+        #     pass
+        # else:
+        #     raise ValueError("State generator class is not available.")
 
         if self.visual:
             stateGenerators = []
             if len(generator_kwargs) == 1:
                 for i in range(self.sceneManager.num_scene):
                     for j in range(self.sceneManager.num_agent_per_scene):
-                        stateGenerators.append(state_generator_class(
+                        stateGenerators.append(load_generator(
+                            cls=state_generator_class,
                             device=self.device,
                             is_collision_func=self.sceneManager.get_point_is_collision,
                             scene_id=i,
-                            **generator_kwargs[0]
+                            kwargs=generator_kwargs[0]
                         )
                         )
             elif len(generator_kwargs) == self.sceneManager.num_scene:
                 for i in range(self.sceneManager.num_scene):
                     for j in range(len(generator_kwargs)):
-                        stateGenerators.append(state_generator_class(
+                        stateGenerators.append(load_generator(
+                            cls=state_generator_class,
                             device=self.device,
                             is_collision_func=self.sceneManager.get_point_is_collision,
                             scene_id=i,
-                            **generator_kwargs[j]
+                            kwargs=generator_kwargs[j]
                         )
                         )
             elif len(generator_kwargs) == self.sceneManager.num_agent:
                 for i in range(self.sceneManager.num_agent):
-                    stateGenerators.append(state_generator_class(
+                    stateGenerators.append(load_generator(
+                        cls=state_generator_class,
                         device=self.device,
                         is_collision_func=self.sceneManager.get_point_is_collision,
                         scene_id=i // self.sceneManager.num_agent_per_scene,
-                        **generator_kwargs[i]
+                        kwargs=generator_kwargs[i]
                     )
                     )
 
@@ -220,10 +224,11 @@ class DroneEnvsBase:
 
         else:
             # not visual
-            for _ in range(self.dynamics.num):
-                stateGenerators.append(state_generator_class(
+            for agent_id in range(self.dynamics.num):
+                stateGenerators.append(load_generator(
+                    cls=state_random_kwargs.get("class", "Uniform"),
                     device=self.device,
-                    **generator_kwargs[0]
+                    kwargs=generator_kwargs[0],
                 )
                 )
             # assert len(stateGenerators) == 1
@@ -238,7 +243,7 @@ class DroneEnvsBase:
                 th.empty((len(indices), 3), device=self.device), th.empty((len(indices), 3), device=self.device)
         for data_id, index in enumerate(indices):
             positions[data_id], orientations[data_id], velocities[data_id], angular_velocities[data_id] = \
-                self.stateGenerators[index].safe_generate(num=1, _eval=self._eval)
+                self.stateGenerators[index].safe_generate(num=1, position=self.dynamic_object_position[data_id][0])
 
         return positions, orientations, velocities, angular_velocities
 
@@ -289,6 +294,8 @@ class DroneEnvsBase:
                     if "depth" in sensor_uuid:
                         self._sensor_obs[sensor_uuid] = \
                             np.expand_dims(np.stack([each_agent_obs[sensor_uuid] for each_agent_obs in img_obs]), 1)
+                        # self._sensor_obs[sensor_uuid][:, :, :, :][self._sensor_obs[sensor_uuid][index, :, :, :] == 0] = 100
+                        self._sensor_obs[sensor_uuid] = np.where(self._sensor_obs[sensor_uuid]==0, 20, self._sensor_obs[sensor_uuid])
                     elif "color" in sensor_uuid:
                         self._sensor_obs[sensor_uuid] = \
                             np.transpose(np.stack([each_agent_obs[sensor_uuid] for each_agent_obs in img_obs])[..., :3], (0, 3, 1, 2))
@@ -304,8 +311,8 @@ class DroneEnvsBase:
                         if "depth" in sensor_uuid:
                             self._sensor_obs[sensor_uuid][index, :, :, :] = \
                                 np.expand_dims(each_agent_obs[sensor_uuid], 0)
-                            # set background (value==0) to 100
-                            self._sensor_obs[sensor_uuid][index, :, :, :][self._sensor_obs[sensor_uuid][index, :, :, :] == 0] = 100
+                            # set background (value==0) to 20
+                            self._sensor_obs[sensor_uuid][index, :, :, :][self._sensor_obs[sensor_uuid][index, :, :, :] == 0] = 20
                         elif "color" in sensor_uuid:
                             self._sensor_obs[sensor_uuid][index, :, :, :] = \
                                 np.transpose(each_agent_obs[sensor_uuid][..., :3], (2, 0, 1))
@@ -354,7 +361,7 @@ class DroneEnvsBase:
         self.dynamics.step(action)
         if self.visual:
             self.sceneManager.set_pose(self.dynamics.position, self.dynamics._orientation.toTensor().T)
-            # self.sceneManager.step()
+            self.sceneManager.step()
         self.update_observation()
         self.update_collision()
 

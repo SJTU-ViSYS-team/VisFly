@@ -1,3 +1,4 @@
+import habitat_sim
 import numpy as np
 import torch as th
 import magnum as mn
@@ -124,6 +125,7 @@ class ObjectManager:
             self._objects_handles.append(
                 self.obj_mgr.add_object_by_template_handle(model_path[th.randint(0, len(model_path), (1,))],attachment_node=self.scene_node)
             )
+            self._objects_handles[0].motion_type = habitat_sim.physics.MotionType.STATIC
 
             self._target_mgrs.append(Path(cls=obj_setting["path"]["class"], velocity=velocity, kwargs=obj_setting["path"]["kwargs"]))
 
@@ -155,7 +157,7 @@ class ObjectManager:
 
     @property
     def position(self):
-        return th.stack(self._positions)
+        return th.vstack(self._positions)
 
     @property
     def orientation(self):
