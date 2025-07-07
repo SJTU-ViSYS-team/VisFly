@@ -17,11 +17,13 @@ More tasks (**Tracking**, **Landing**, **Racing**)  involves **BPTT** could be f
 We will keep updating this project for more usages.
 
 # Noting!
-We will keep updating VisFly for more usages, and the interfaces may be changed. 
+1. We will keep updating VisFly for more usages, and the interfaces may be changed. 
 It is hard to comprehensively well maintain all the previous section of the code. 
 Sometimes you will encounter some errors when running the example.
 If you are in a hurry to use VisFly, you could try to reset the git to previous version. 
 Or you can directly tell me via email or Issues on github, and I will fix these issues in next code push.
+
+2. We have added moving objects and their position/collision detection in beta branch. And, we will primarily update beta branch for more usages. The dataset for beta should be download here [visfly-beta](https://huggingface.co/datasets/LiFanxing/visfly-beta).
 # Installation
 ## Clone the repository
 Clone the repository to local.
