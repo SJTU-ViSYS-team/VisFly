@@ -25,7 +25,7 @@ env:
   num_agent_per_scene: 100
   max_episode_steps: 256
   scene_kwargs:
-    path: VisFly/datasets/spy_datasets/configs/garage_empty
+    path: VisFly/datasets/visfly-beta/configs/garage_empty
   visual: False
   device: cpu
   tensor_output: True
@@ -39,7 +39,7 @@ eval_env:
   visual: True
   sensor_kwargs: []
   scene_kwargs:
-    path: VisFly/datasets/spy_datasets/configs/garage_empty
+    path: VisFly/datasets/visfly-beta/configs/garage_empty
     render_settings:
       mode: fix
       view: custom

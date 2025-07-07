@@ -104,7 +104,7 @@ def calc_camera_transform(
 class SceneManager(ABC):
     def __init__(
             self,
-            path: str = "VisFly/datasets/spy_datasets/configs/garage_empty",
+            path: str = "VisFly/datasets/visfly-beta/configs/garage_empty",
             scene_type: str = "json",
             num_scene: int = 1,
             num_agent_per_scene: Union[int, List[int]] = 1,
@@ -218,19 +218,19 @@ class SceneManager(ABC):
         index = parts.index("datasets") + 1
         root_addr = os.path.dirname(__file__) + "/../"
         self.datasets = parts[index]
-        self._drone_path = [root_addr + "datasets/spy_datasets/configs/agents/DJI_Mavic_" + c + ".object_config.json" for c in ["red", "green", "blue", "orange"]]
+        self._drone_path = [root_addr + "datasets/visfly-beta/configs/agents/DJI_Mavic_" + c + ".object_config.json" for c in ["red", "green", "blue", "orange"]]
         if "hm3d" in parts[index].lower():
             self.datasets_name = "hm3d"
-            self._datasets_path = root_addr + "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
-        elif "spy" in parts[index].lower():
-            self.datasets_name = "spy_datasets"
-            self._datasets_path = root_addr + "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+            self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
+        elif "visfly" in parts[index].lower():
+            self.datasets_name = "visfly-beta"
+            self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
         elif "hssd" in parts[index].lower():
             self.datasets_name = "hssd-hab"
             self._datasets_path = root_addr + "datasets/hssd-hab/hssd-hab.scene_dataset_config.json"
         elif "mp3d" in parts[index].lower():
             self.datasets_name = "mp3d"
-            self._datasets_path = root_addr + "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+            self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
         else:
             raise ValueError("datasets name is not supported")
 
@@ -356,8 +356,6 @@ class SceneManager(ABC):
             self._object_step()
 
     def _object_step(self):
-        # for obj_ctrl in self._obj_ctrls:
-        #     obj_ctrl.step()
         for i in range(self.num_scene):
             self._obj_ctrls[i].step()
             self.scenes[i].update_dynamic_KDtree()

@@ -16,15 +16,18 @@ from VisFly.utils.test.mesh_plot import plot_rectangle_mesh, plot_triangle_mesh
 random_kwargs = {
     "state_generator":
         {
-            "class": "Uniform",
-            # "class": "TargetUniform",
+            # "class": "Uniform",
+            "class": "TargetUniform",
             "kwargs": [
                 {"position": {"mean": [10., 0., 1.5], "half": [1.0, 1.0, 0.3]}},
             ]
         }
 }
 
-scene_path = "VisFly/datasets/spy_datasets/configs/scenes/box10_empty"
+scene_path = "VisFly/datasets/visfly-beta/configs/scenes/box10_empty"
+scene_path = "VisFly/datasets/visfly-beta/configs/scenes/box10_wall"
+scene_path = "VisFly/datasets/visfly-beta/configs/scenes/box15_wall_pillar"
+# scene_path = "VisFly/datasets/visfly-beta/configs/scenes/garage_simple_l_long"
 sensor_kwargs = [{
     "sensor_type": SensorType.DEPTH,
     "uuid": "depth",
@@ -33,15 +36,16 @@ sensor_kwargs = [{
 }]
 scene_kwargs = {
     "path": scene_path,
-    # "obj_settings": {
-    #     "path": "obj",
-    # },
+    "obj_settings": {
+        "path": "obj",
+    },
     "render_settings": {
         "mode": "fix",
         "view": "custom",
         "resolution": [1080, 1920],
         # "position": th.tensor([[-2., 0, 3.5], [2, 0, 2.5]]),
-        "position": th.tensor([[7., 6.8, 5.5], [7, 4.8, 4.5]]),
+        # "position": th.tensor([[7., 6.8, 5.5], [7, 4.8, 4.5]]),
+        "position": th.tensor([[3., 0, 5.5], [7, 0, 4.5]]),
         "line_width": 6.,
 
         # "point": th.tensor([[9., 0, 1], [1, 0, 1]]),
@@ -67,7 +71,7 @@ env.reset()
 
 t = 0
 while True:
-    # a = th.rand((num_agent*num_scene, 4))*0
+    # a = th.rand((num_agent*num_scene, 4))
     a = th.zeros((num_agent * num_scene, 4)) + th.tensor([-0.2, 0, 0, 0])
     env.step(a)
     # circile position
@@ -83,6 +87,7 @@ while True:
     drone_obs = np.hstack([i[0] for i in obs[:num_agent]])/5
     cv.imshow("obs", cv.cvtColor(drone_obs, cv.COLOR_RGBA2BGRA))
     # print(env.envs.dynamic_object_position)
-    # plot_triangle_mesh(env.envs.sceneManager.scenes[0].mesh_data.vertices, faces=env.envs.sceneManager.scenes[0].mesh_data.faces)
+    # plot_triangle_mesh(env.envs.sceneManager.scenes[0].object_mesh.vertices, faces=env.envs.sceneManager.scenes[0].object_mesh.faces)
+    # plot_triangle_mesh(env.envs.sceneManager.scenes[0].scene_mesh.vertices, faces=env.envs.sceneManager.scenes[0].scene_mesh.faces)
     cv.waitKey(100)
     t += 1

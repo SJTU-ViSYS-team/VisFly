@@ -109,7 +109,7 @@ class ObjectManager:
         # self._model_paths = []
         for obj_setting in objs_setting:
             name = obj_setting["name"]
-            obj_model_path = root_addr + f'datasets/spy_datasets/configs/{obj_setting["model_path"]}'
+            obj_model_path = root_addr + f'datasets/visfly-beta/configs/objects/{obj_setting["model_path"]}'
             model_path = get_files_with_suffix(obj_model_path, ".json")
             generator = load_generator(
                 cls=obj_setting["initial"]["class"],
@@ -125,7 +125,7 @@ class ObjectManager:
             self._objects_handles.append(
                 self.obj_mgr.add_object_by_template_handle(model_path[th.randint(0, len(model_path), (1,))],attachment_node=self.scene_node)
             )
-            self._objects_handles[0].motion_type = habitat_sim.physics.MotionType.STATIC
+            self._objects_handles[0].motion_type = habitat_sim.physics.MotionType.DYNAMIC
 
             self._target_mgrs.append(Path(cls=obj_setting["path"]["class"], velocity=velocity, kwargs=obj_setting["path"]["kwargs"]))
 

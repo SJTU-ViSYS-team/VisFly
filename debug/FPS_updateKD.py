@@ -22,7 +22,8 @@ random_kwargs = {
         }
 }
 
-scene_path = "VisFly/datasets/spy_datasets/configs/scenes/box10_empty"
+scene_path = "VisFly/datasets/visfly-beta/configs/scenes/box10_empty"
+scene_path = "VisFly/datasets/visfly-beta/configs/scenes/box15_wall_pillar"
 sensor_kwargs = [{
     "sensor_type": SensorType.DEPTH,
     "uuid": "depth",

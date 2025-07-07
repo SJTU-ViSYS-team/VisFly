@@ -55,7 +55,7 @@ Here you need to register a hugging face acount and export your [access token](h
 ```bash
 cd datasets
 git clone https://YourUsername:YourAccessToken@huggingface.co/datasets/LiFanxing/VisFly-datasets.git
-mv VisFly-datasets/spy_datasets spy_datasets # move spy_datasets out of VisFly-datasets folder, it should be root/VisFly/datasets/spy_datasets
+mv VisFly-datasets/visfly-beta visfly-beta # move visfly-beta out of VisFly-datasets folder, it should be root/VisFly/datasets/visfly-beta
 ```
 
 ## Run an Example
@@ -127,7 +127,7 @@ env = NavigationEnv(
 
         # **use render_kwargs only when you need to output the rendered video or image.**
         "render_settings": {
-            "object_path": "datasets/spy_datasets/configs/agents/DJI_Mavic_Mini_2.object_config.json",  # drone model path, or replace it with your own
+            "object_path": "datasets/visfly-beta/configs/agents/DJI_Mavic_Mini_2.object_config.json",  # drone model path, or replace it with your own
             "mode": "fix",  # assert mode in ["fix", "follow"] 
             "view": "custom",  # assert view in ["custom", "top", "near", "side", "back] when mode is "fix", ["near", "back"] when mode is "follow"
             "resolution": [1080, 1920],
@@ -512,7 +512,7 @@ Now the agent has grasped basic flying skills. Then we train it to fly while avo
 Change the `get_reward()` and use another cluttered scene datasets path:
 ```python
 # in main.py
-scene_path = "datasets/spy_datasets/configs/garage_simple_l_medium"
+scene_path = "datasets/visfly-beta/configs/garage_simple_l_medium"
 
 # in NavigationEnv.py
 def get_reward(self) -> th.Tensor:

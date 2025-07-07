@@ -135,14 +135,14 @@ class SceneGenerator:
         self.light_root_path = os.path.join(path, "configs/lights")
         self.stage_root_path = os.path.join(path, "configs/stages")
         self.navmesh_root_path = os.path.join(path, "navmeshes")
-        self.save_path = os.path.join(path, f"configs/{name}")
+        self.save_path = os.path.join(path, f"configs/scenes/{self.setting.stage}_{name}")
 
         self.objects_path = self._get_all_chirldren_path(self.object_root_path)
         self.lights_path = self._get_all_chirldren_path(self.light_root_path)
         self.stages_path = self._get_all_chirldren_path(self.stage_root_path)
         self.navmesh_path = self._get_all_chirldren_path(self.navmesh_root_path)
 
-        self._write_scene_dir_in_summary(name)
+        self._write_scene_dir_in_summary(f"{self.setting.stage}_{name}")
 
     def generate(self):
         return self._create_scene_json()
@@ -150,12 +150,13 @@ class SceneGenerator:
 
     def _write_scene_dir_in_summary(self, name):
         # load json file
-        summary_path = os.path.join(self.path, "spy_datasets.scene_dataset_config.json")
+        summary_path = os.path.join(self.path, "visfly-beta.scene_dataset_config.json")
         with open(summary_path, "r") as file:
             summary = json.load(file)
         # write
-        if f"configs/{name}" not in summary["scene_instances"]["paths"][".json"]:
-            summary["scene_instances"]["paths"][".json"].append(f"configs/{name}")
+        path = f"configs/scenes/{name}"
+        if path not in summary["scene_instances"]["paths"][".json"]:
+            summary["scene_instances"]["paths"][".json"].append(path)
         with open(summary_path, "w") as file:
             json.dump(summary, file, indent=4)
 
@@ -186,8 +187,10 @@ class SceneGenerator:
                     scene_json["default_lighting"] = "lighting/garage_v1_0"
                 # elif self.setting.stage == "box":
                 #     scene_json["default_lighting"] = "lighting/box_v1_0"
-                elif "10plane" in self.setting.stage:
-                    scene_json["default_lighting"] = "lighting/10plane_0"
+                elif "box10" in self.setting.stage:
+                    scene_json["default_lighting"] = "lighting/box10_0"
+                elif "box15" in self.setting.stage:
+                    scene_json["default_lighting"] = "lighting/box15_0"
                 else:
                     scene_json["default_lighting"] = "default"
 
@@ -218,14 +221,16 @@ class SceneGenerator:
         """
         if "garage" in stage_name:
             return [[0, -7, 0], [18, 7, 5.]]
-        elif "10plane_wall" in stage_name:
+        elif "box10_wall" in stage_name:
             return [[0, -10, 0], [20, 10, 8.]]
+        elif "box15_wall" in stage_name:
+            return [[0, -15, 0], [30, 15, 8.]]
         scene_json = empty_scene.copy()
         scene_json["stage_instance"]["template_name"] = stage_name
         scene_save_path = f"{self.save_path}/temp.scene_instance.json"
         self._save_json_file(scene_save_path, scene_json)
         habitat_sim_cfg = habitat_sim.SimulatorConfiguration()
-        habitat_sim_cfg.scene_dataset_config_file = "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+        habitat_sim_cfg.scene_dataset_config_file = "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
         habitat_sim_cfg.enable_physics = False
         agent_cfg = habitat_sim.agent.AgentConfiguration()
         sim = habitat_sim.Simulator(habitat_sim.Configuration(habitat_sim_cfg,[agent_cfg]))
@@ -253,8 +258,10 @@ class SceneGenerator:
             pass
         elif self.setting.stage == "garage":
             return "stages/garage_v1"
-        elif self.setting.stage == "10plane_wall":
-            return "stages/10plane_wall"
+        elif self.setting.stage == "box10_wall":
+            return "stages/box10_wall"
+        elif self.setting.stage == "box15_wall":
+            return "stages/box15_wall"
         elif self.setting.stage == "random":
             pass
         else:
@@ -462,17 +469,19 @@ if __name__ == "__main__":
     args = parsers().parse_args()
     if args.scene == "garage":
         object_margin = np.array([[3,0,0],[7,0,5]])
-    elif args.scene == "10plane_wall":
+    elif args.scene == "box10_wall":
         object_margin = np.array([[3,0,0],[3,0,8]])
+    elif args.scene == "box15_wall":
+        object_margin = np.array([[3, 0, 0], [3, 0, 8]])
     g = SceneGenerator(
-        path="datasets/spy_datasets",
+        path="datasets/visfly-beta",
         num=args.quantity,
         name=args.name if args.name is not None else args.scene,
         setting=SceneGeneratorSetting(
             object_dense=args.density,
             object_scale=0,
             object_rotate=0,
-            object_margin=object_margin,  #  camera coordinate [[back, right, down],[front, left, up]]
+            object_margin=object_margin,  # camera coordinate [[back, right, down],[front, left, up]]
             # object_margin=(0, 0, 0),
             light_random=False,
             stage=args.scene,
@@ -483,11 +492,11 @@ if __name__ == "__main__":
         scene_save_paths = g.generate()
     if args.render:
         os.system(f"python /home/lfx-desktop/files/habitat-sim/examples/viewer.py \
-        --dataset datasets/spy_datasets/spy_datasets.scene_dataset_config.json \
+        --dataset datasets/visfly-beta/visfly-beta.scene_dataset_config.json \
         --scene {g.name}_0  --disable-physics")
 
-        # --dataset datasets/spy_datasets/spy_datasets.scene_dataset_config.json \
+        # --dataset datasets/visfly-beta/visfly-beta.scene_dataset_config.json \
         # --scene garage_simple_0  --disable-physics"
 
-# f"python /home/lfx-desktop/files/habitat-sim/examples/viewer.py --dataset datasets/spy_datasets/spy_datasets.scene_dataset_config.json         --scene {g.name}_0  --disable-physics"
+# f"python /home/lfx-desktop/files/habitat-sim/examples/viewer.py --dataset datasets/visfly-beta/visfly-beta.scene_dataset_config.json         --scene {g.name}_0  --disable-physics"
 # f"python /home/lfx-desktop/files/habitat-sim/examples/viewer.py --dataset datasets/hssd-hab/hssd-hab.scene_dataset_config.json --scene 102343992 --disable-physics"

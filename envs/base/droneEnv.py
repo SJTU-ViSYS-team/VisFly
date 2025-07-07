@@ -468,4 +468,7 @@ class DroneEnvsBase:
 
     @property
     def dynamic_object_position(self):
-        return self.sceneManager.dynamic_object_position
+        if self.sceneManager:
+            return self.sceneManager.dynamic_object_position
+        else:
+            return [[None] for _ in range(self.dynamics.num)]

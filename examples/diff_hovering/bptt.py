@@ -17,7 +17,7 @@ from VisFly.utils.algorithms.BPTT import BPTT
 args = rl_parser().parse_args()
 
 save_folder = os.path.dirname(os.path.abspath(sys.argv[0])) + "/saved/"
-scene_path = "VisFly/datasets/spy_datasets/configs/garage_empty"
+scene_path = "VisFly/datasets/visfly-beta/configs/garage_empty"
 
 
 def main():

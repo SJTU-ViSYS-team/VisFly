@@ -61,7 +61,7 @@ class DroneGymEnvsBase(VecEnv):
         #     "ctrl_delay": True,
         # } if dynamics_kwargs is None else dynamics_kwargs
         # scene_kwargs = {
-        #     "path": "VisFly/datasets/spy_datasets/configs/garage_empty"
+        #     "path": "VisFly/datasets/visfly-beta/configs/garage_empty"
         # } if scene_kwargs is None else scene_kwargs
 
         self.envs = DroneEnvsBase(

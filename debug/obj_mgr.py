@@ -4,7 +4,7 @@ from VisFly.envs.HoverEnv import HoverEnv2
 
 
 scene_kwargs = {
-    "path":"VisFly/datasets/spy_datasets/configs/garage_empty",
+    "path":"VisFly/datasets/visfly-beta/configs/garage_empty",
     "sensor_settings":[{
                 "sensor_type": habitat_sim.SensorType.DEPTH,
                 "uuid": "depth",
