@@ -54,7 +54,7 @@ This demonstration dataset is created based on [Replica](https://github.com/face
 Here you need to register a hugging face acount and export your [access token](https://huggingface.co/blog/password-git-deprecation). 
 ```bash
 cd datasets
-git clone https://YourUsername:YourAccessToken@huggingface.co/datasets/LiFanxing/VisFly-datasets.git
+git clone https://YourUsername:YourAccessToken@huggingface.co/datasets/LiFanxing/visfly-beta.git
 mv VisFly-datasets/visfly-beta visfly-beta # move visfly-beta out of VisFly-datasets folder, it should be root/VisFly/datasets/visfly-beta
 ```
 
