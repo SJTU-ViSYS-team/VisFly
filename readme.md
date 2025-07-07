@@ -42,13 +42,14 @@ sudo apt-get install libcgal-dev
 ```
 If you encounter any issues, please refer to the official installation steps on the website of [CAGL](https://www.cgal.org/download/linux.html). 
 ## Install modified habitat-sim.
+
 Clone the modified habitat-sim source code:
 ```
 git clone https://github.com/Fanxing-LI/habitat-sim
 cd habitat-sim
 ```
-Then please follow the steps in Section. **Build from Source** in [habitat-sim installation manual](https://github.com/Fanxing-LI/habitat-sim/blob/main/BUILD_FROM_SOURCE.md).
-
+Then please follow the steps in Section. **Build from Source** in [habitat-sim installation manual](https://github.com/Fanxing-LI/habitat-sim/blob/main/BUILD_FROM_SOURCE.md). 
+**Sometimes it raises dependence error while building from source code， and you cannot locate the specific package, maybe it could be solved by firstly installing the original habitatsim to auto install the dependencies.**
 # Quick Start
 ## Download the Datasets for Demo
 Down the dataset from [hugging face](https://huggingface.co/datasets/LiFanxing/VisFly). 
