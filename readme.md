@@ -23,7 +23,7 @@ Sometimes you will encounter some errors when running the example.
 If you are in a hurry to use VisFly, you could try to reset the git to previous version. 
 Or you can directly tell me via email or Issues on github, and I will fix these issues in next code push.
 
-2. We have added moving objects and their position/collision detection in beta branch. And, we will primarily update beta branch for more usages. The dataset for beta should be download here [visfly-beta](https://huggingface.co/datasets/LiFanxing/visfly-beta).
+2. We will primarily update beta branch for more usage, It is hard to maintain main branch, because includes too many immature details to modify one by one. We have added moving objects and their position/collision detection in beta branch. The dataset for beta should be download here [visfly-beta](https://huggingface.co/datasets/LiFanxing/visfly-beta). **In beta branch, we reorganize and upgrade all the files and folders structure to make it more clear to follow.**
 # Installation
 ## Clone the repository
 Clone the repository to local.
