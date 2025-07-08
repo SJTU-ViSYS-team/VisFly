@@ -83,9 +83,8 @@ class Dynamics:
         
         self._drag_random = drag_random
 
-
-    def _init(self, cfg = "example"):
-        self.load(os.path.join(os.path.dirname(__file__), "..", "..", "configs", f"{cfg}.json"))
+    def _init(self, cfg):
+        self.load(os.path.join(os.path.dirname(__file__), "..", "..", "configs", "drone", f"{cfg}.json"))
         t_BM_ = (
                 self._arm_length
                 * th.tensor(0.5).sqrt()

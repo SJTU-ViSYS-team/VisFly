@@ -304,8 +304,8 @@ class DroneGymEnvsBase(VecEnv):
 
         if isinstance(self.get_reward(), dict):
             self._indiv_reward: dict = self.get_reward()
-            self._indiv_rewards = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
-            self._indiv_reward = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
+            self._indiv_rewards = {key: th.zeros((self.num_agent,), device=self.device) for key in self._indiv_reward.keys()}
+            self._indiv_reward = {key: th.zeros((self.num_agent,), device=self.device) for key in self._indiv_reward.keys()}
         elif isinstance(self.get_reward(), th.Tensor):
             self._indiv_rewards = None
             self._indiv_reward = None
