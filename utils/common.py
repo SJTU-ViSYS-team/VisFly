@@ -165,7 +165,6 @@ def std_to_habitat(std_pos: Optional[Tensor] = None, std_ori: Optional[Tensor] =
     if std_pos is None:
         hab_pos = None
     else:
-
         if len(std_pos.shape) == 1:
             hab_pos = (std_pos.clone().detach().cpu().unsqueeze(0).numpy() @ np.array([[0, 0, -1],
                                                                                        [-1, 0, 0],
@@ -233,6 +232,7 @@ def deep_merge(origin, target):
 def load_yaml_config(path):
     with open(path, 'r') as file:
         config = yaml.safe_load(file)
-        config["eval_env"] = deep_merge(origin=config["env"], target=config["eval_env"])
+        if "env" in config:
+            config["eval_env"] = deep_merge(origin=config["env"], target=config["eval_env"])
 
     return config

@@ -26,8 +26,8 @@ class Uniform:
             self,
             mean,
             half, ):
-        self.mean = th.as_tensor(mean)
-        self.half = th.as_tensor(half)
+        self.mean = th.atleast_1d(th.as_tensor(mean))
+        self.half = th.atleast_1d(th.as_tensor(half))
 
     def to(self, device):
         self.mean = self.mean.to(device)

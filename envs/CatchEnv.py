@@ -81,7 +81,7 @@ class CatchEnv(DroneGymEnvsBase):
             latent_dim=latent_dim,
         )
         scene_kwargs["object_kwargs"] = {
-            "object_setting_path": "VisFly/datasets/spy_datasets/configs/free_falling_objects.json",
+            "object_setting_path": "VisFly/datasets/visfly-beta/configs/free_falling_objects.json",
             "isolated": True,
         }
 

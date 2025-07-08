@@ -17,6 +17,7 @@ import quaternion
 import magnum as mn
 from .common import *
 from abc import ABC
+from .test.mesh_plot import plot_triangle_mesh, plot_rectangle_mesh
 
 DEBUG = False
 
@@ -25,7 +26,7 @@ origin = mn.Vector3(0.0, 0.0, 0.0)
 eye_pos0 = mn.Vector3(0.5, 0.2, 0.1)
 eye_pos1 = mn.Vector3(3.5, 3.0, 4.5)
 eye_pos_follow = mn.Vector3(-0.1, -0.2, -0.5)
-eye_pos_near = mn.Vector3(0.1, 0.5, 1)*3
+eye_pos_near = mn.Vector3(0.1, 0.5, 1) * 3
 eye_pos_back = mn.Vector3(0, 0.8, 2)
 
 eye_pos_follow_back = mn.Vector3(0, 0.5, 1)
@@ -34,12 +35,12 @@ eye_pos_follow_near = mn.Vector3(0.1, 0.5, 1)
 
 copacity = 1.0
 # BGR
-# ColorSet = [
-#     mn.Color4(45./255, 45./255, 45./255, copacity),
-#     mn.Color4(255./255, 96./255, 0./255, copacity),
-#     mn.Color4(255./255, 165./255, 89./255, copacity),
-#     mn.Color4(255./255, 230./255, 199./255, copacity),
-# ]
+ColorSet5 = [
+    mn.Color4(45./255, 45./255, 45./255, 0.1),
+    mn.Color4(255./255, 96./255, 0./255, copacity),
+    mn.Color4(255./255, 165./255, 89./255, copacity),
+    mn.Color4(255./255, 230./255, 199./255, copacity),
+]
 ColorSet = [
     mn.Color4(69. / 255, 69. / 255, 69. / 255, copacity),  # default color
     mn.Color4(0. / 255, 96. / 255, 255. / 255, copacity),  # highlight color1
@@ -54,28 +55,25 @@ ColorSet2 = [
     mn.Color4(246. / 255, 153. / 255, 92. / 255, copacity),  # highlight color3
 ]
 
-
 # create a 20 length similar Colorset using orange as primary color
 ColorSet3 = []
 for i in np.linspace(0, 1, 100):
     color = mn.Color4(1.0 - 0.5 * i, 0.5 * i, 0.5 * i, 1.0)  # RGBA color
     ColorSet3.append(color)
 
+ColorSet6 = [
+    mn.Color4(0. / 255, 128. / 255, 157. / 255, 1.),  # default color
+    mn.Color4(252. / 255, 236. / 255, 221. / 255, copacity),  # highlight color1
+    mn.Color4(255. / 255, 117. / 255, 1. / 255, copacity),  # highlight color2
+    mn.Color4(242. / 255, 162. / 255, 109. / 255, copacity),  # highlight color3
+]  # rgb
 
 ColorSet4 = [
-    mn.Color4(33. / 255, 156. / 255, 144. / 255, 1.),  # default color
-    mn.Color4(233. / 255, 184. / 255, 36. / 255, copacity),  # highlight color1
-    mn.Color4(238. / 255, 147. / 255, 34. / 255, copacity),  # highlight color2
-    mn.Color4(216. / 255, 63. / 255, 49. / 255, copacity),  # highlight color3
-] # rgb
-
-ColorSet4 = [
-    mn.Color4(144. / 255,156. / 255,  33. / 255, 0.5),  # default color
-    mn.Color4( 36. / 255, 184. / 255, 233. / 255,copacity),  # highlight color1
+    mn.Color4(144. / 255, 156. / 255, 33. / 255, 0.5),  # default color
+    mn.Color4(36. / 255, 184. / 255, 233. / 255, copacity),  # highlight color1
     mn.Color4(34. / 255, 147. / 255, 238. / 255, copacity),  # highlight color2
     mn.Color4(49. / 255, 63. / 255, 216. / 255, copacity),  # highlight color3
-] # bgr
-
+]  # bgr
 
 red = mn.Color4(1.0, 0.0, 0.0, copacity)
 green = mn.Color4(0.0, 1.0, 0.0, copacity)
@@ -85,13 +83,12 @@ orange = mn.Color4(1.0, 0.5, 0.0, copacity)
 
 
 def color_consequence(
-        color1=ColorSet4[2],
-        color2=ColorSet4[0],
+        color1=ColorSet5[2],
+        color2=ColorSet5[0],
         factor=1,
 ):
-    factor = np.array(factor).clip(min=0.,max=1.)
-
-    return color1*(1-factor)+factor*color2
+    factor = np.array(factor).clip(min=0., max=1.)
+    return color1 * (1 - factor) + factor * color2
 
 
 def calc_camera_transform(
@@ -107,7 +104,7 @@ def calc_camera_transform(
 class SceneManager(ABC):
     def __init__(
             self,
-            path: str = "VisFly/datasets/spy_datasets/configs/garage_empty",
+            path: str = "VisFly/datasets/visfly-beta/configs/garage_empty",
             scene_type: str = "json",
             num_scene: int = 1,
             num_agent_per_scene: Union[int, List[int]] = 1,
@@ -156,10 +153,19 @@ class SceneManager(ABC):
         # self._dataLoader = DataLoader(
         #     ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=True
         # , num_workers=0)
-        self._dataLoader = SimpleDataLoader(
+        _dataLoader = SimpleDataLoader(
             ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=True
         )
-        self._scene_loader = self._dataLoader
+        self._scene_loader = _dataLoader
+
+        if obj_settings:
+            obj_path = self.obj_settings.get("path", None)
+            _objLoader = SimpleDataLoader(
+                ChildrenPathDataset(f"VisFly/configs/{obj_path}", type='obj', semantic=False), batch_size=num_scene, shuffle=True
+            )
+            self._obj_loader = _objLoader
+        self.dynamic_object_position = [[None] for _ in range(num_agent_per_scene*num_scene)]
+
         self.scenes: List[habitat_sim.scene] = [None for _ in range(num_scene)]
         self.agents: List[List[habitat_sim.agent]] = [[] for _ in range(num_scene)]
 
@@ -176,14 +182,10 @@ class SceneManager(ABC):
         self.is_multi_drone = multi_drone
 
         # Initialize _obj_mgrs to None by default
-        self._obj_mgrs = None
-
-        if self.obj_settings:
-            self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
-            self._obj_ctrls: ObjectManager = [None for _ in range(num_scene)]
+        self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
+        self._obj_ctrls: ObjectManager = [None for _ in range(num_scene)]
 
         if multi_drone:
-            self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
             self._drones = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
 
         if self.render_settings is not None:
@@ -196,12 +198,12 @@ class SceneManager(ABC):
             self.render_settings["view"] = self.render_settings.get("view", "near")
             self.render_settings["resolution"] = self.render_settings.get("resolution", [256, 256])
             self.render_settings["position"] = self.render_settings.get("position", None)
+            self.render_settings["collision"] = self.render_settings.get("collision", False)
 
             if self.render_settings["position"] is not None:
                 self.render_settings["position"] = th.as_tensor(self.render_settings["position"], dtype=th.float32)
 
             self._render_camera = [None for _ in range(num_scene)]
-            self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
             self._line_mgrs: habitat_sim.gfx.DebugLineRender = [None for _ in range(num_scene)]
             self._drones = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
 
@@ -213,22 +215,22 @@ class SceneManager(ABC):
 
     def _get_datasets_info(self, path):
         parts = path.split("/")
-        index = parts.index("datasets")+1
-        root_addr = os.path.dirname(__file__)+"/../"
+        index = parts.index("datasets") + 1
+        root_addr = os.path.dirname(__file__) + "/../"
         self.datasets = parts[index]
-        self._drone_path = [root_addr + "datasets/spy_datasets/configs/agents/DJI_Mavic_" + c + ".object_config.json" for c in ["red", "green", "blue", "orange"]]
+        self._drone_path = [root_addr + "datasets/visfly-beta/configs/agents/DJI_Mavic_" + c + ".object_config.json" for c in ["red", "green", "blue", "orange"]]
         if "hm3d" in parts[index].lower():
             self.datasets_name = "hm3d"
-            self._datasets_path = root_addr+"datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
-        elif "spy" in parts[index].lower():
-            self.datasets_name = "spy_datasets"
-            self._datasets_path = root_addr+"datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+            self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
+        elif "visfly" in parts[index].lower():
+            self.datasets_name = "visfly-beta"
+            self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
         elif "hssd" in parts[index].lower():
             self.datasets_name = "hssd-hab"
-            self._datasets_path = root_addr+"datasets/hssd-hab/hssd-hab.scene_dataset_config.json"
+            self._datasets_path = root_addr + "datasets/hssd-hab/hssd-hab.scene_dataset_config.json"
         elif "mp3d" in parts[index].lower():
             self.datasets_name = "mp3d"
-            self._datasets_path = root_addr+"datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+            self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
         else:
             raise ValueError("datasets name is not supported")
 
@@ -314,20 +316,20 @@ class SceneManager(ABC):
                 self.agents[scene_id][agent_id].scene_node.rotation = mn.Quaternion(mn.Vector3(hab_ori[drone_id][1:]), hab_ori[drone_id][0])
 
                 self.trajectory[scene_id][agent_id].insert(0,
-                    np.hstack([hab_pos[drone_id], hab_ori[drone_id]])
-                )
+                                                           np.hstack([hab_pos[drone_id], hab_ori[drone_id]])
+                                                           )
                 drone_id += 1
-                if self.is_multi_drone:
+                if self.is_multi_drone or self.render_settings:
                     self._drones[scene_id][agent_id].root_scene_node.transformation = \
                         self.agents[scene_id][agent_id].scene_node.transformation
         self._update_collision_infos()
 
-        if self._obj_mgrs is not None:
-            # set the pose of objects or agents in the scene
-            for scene_id in range(self.num_scene):
-                for agent_id in range(self.num_agent_per_scene):
-                    self._drones[scene_id][agent_id].root_scene_node.transformation = \
-                        self.agents[scene_id][agent_id].scene_node.transformation
+        # if hasattr(self, "_drone"):
+        #     # set the pose of objects or agents in the scene
+        #     for scene_id in range(self.num_scene):
+        #         for agent_id in range(self.num_agent_per_scene):
+        #             self._drones[scene_id][agent_id].root_scene_node.transformation = \
+        #                 self.agents[scene_id][agent_id].scene_node.transformation
 
     def get_observation(self, indices: Optional[int] = None):
         """_summary_
@@ -348,6 +350,16 @@ class SceneManager(ABC):
                 scene_id = index // self.num_agent_per_scene
                 obses.append(self.scenes[scene_id].get_sensor_observations(int(agent_id)))
         return obses
+
+    def step(self):
+        if self.obj_settings:
+            self._object_step()
+
+    def _object_step(self):
+        for i in range(self.num_scene):
+            self._obj_ctrls[i].step()
+            self.scenes[i].update_dynamic_KDtree()
+        self._update_dynamics()
 
     def _update_collision_infos(self, indices: Optional[List] = None, sensitive_radius: float = None):
         """_summary_test
@@ -457,9 +469,10 @@ class SceneManager(ABC):
         """
 
         # draw lines in local coordinate of agent_s or objects
-        def draw_axes(sim, translation, axis_len=1.0):
+        def draw_axes(lr, translation, axis_len=1.0):
             ENU_coordnates_axes = True
-            lr = sim.get_debug_line_render()
+            # lr = sim.get_debug_line_render()
+            lr = lr
             if ENU_coordnates_axes:
                 lr.draw_transformed_line(translation, mn.Vector3(0, 0, -axis_len), ColorSet[1])
                 lr.draw_transformed_line(translation, mn.Vector3(-axis_len / 2, 0, 0), ColorSet[2])
@@ -480,7 +493,7 @@ class SceneManager(ABC):
         # debug
         if DEBUG or is_draw_axes or self.render_settings["axes"]:
             for scene_id in range(self.num_scene):
-                draw_axes(self.scenes[scene_id], origin, axis_len=1)
+                draw_axes(self._line_mgrs[scene_id], origin, axis_len=1)
 
         if points is not None:
             points = std_to_habitat(points, None)[0]
@@ -503,35 +516,38 @@ class SceneManager(ABC):
                 self._line_mgrs[0].draw_path_with_endpoint_circles(
                     curve, 0.1, white)
 
-
-
         # draw the axes of agents
         if self.render_settings["axes"] or is_draw_axes:
             for scene_id in range(self.num_scene):
                 for agent_id in range(self.num_agent_per_scene):
-                    # self._line_renders[scene_id].push_transform(self.agents[scene_id][agent_id].scene_node.transformation)
                     self._line_mgrs[scene_id].push_transform(
                         self._drones[scene_id][agent_id].transformation
                     )
-                    draw_axes(self.scenes[scene_id], origin, axis_len=1)
+                    draw_axes(self._line_mgrs[scene_id], origin, axis_len=1)
                     self._line_mgrs[scene_id].pop_transform()
 
         # draw the trajectory of agents
         if self.render_settings["trajectory"]:
             for scene_id in range(self.num_scene):
                 for agent_id in range(self.num_agent_per_scene):
-                    # traj = [mn.Vector3(point[:3]) for point in self.trajectory[scene_id][agent_id]]
-                    # if len(traj) > 1:
-                    #     self._line_renders[0].draw_path_with_endpoint_circles(
-                    #         traj, 0.1, white)
-                    for line_id in np.arange(len(self.trajectory[scene_id][agent_id])-1):
+                    for line_id in np.arange(len(self.trajectory[scene_id][agent_id]) - 1):
                         self._line_mgrs[scene_id].draw_transformed_line(
                             self.trajectory[scene_id][agent_id][line_id][:3],
-                            self.trajectory[scene_id][agent_id][line_id+1][:3],
-                            color_consequence(factor=line_id/10),
+                            self.trajectory[scene_id][agent_id][line_id + 1][:3],
+                            color_consequence(factor=line_id / 10),
                         )
-                    # trajectory_data = np.array(self.trajectory[scene_id][agent_id])
-                    # self._line_renders[scene_id].draw_transformed_line(trajectory_data[:3], self.trajectory[scene_id][agent_id][i+1][:3], white)
+
+        if self.render_settings["collision"]:
+            for scene_id in range(self.num_scene):
+                for agent_id in range(self.num_agent_per_scene):
+                    if self._collision_point[scene_id][agent_id] is not None:
+                        p1 = self._collision_point[scene_id][agent_id]
+                        p2 = np.array(self.agents[scene_id][agent_id].scene_node.translation)
+                        self._line_mgrs[scene_id].draw_transformed_line(
+                            p2, p1,
+                            color=color_consequence(
+                                factor=np.linalg.norm(p2-p1)/2, color1=ColorSet6[2], color2=ColorSet6[0])
+                        )
 
         # set the render camera pose
         if self.render_settings["mode"] == "follow":
@@ -543,7 +559,7 @@ class SceneManager(ABC):
                 for scene_id in range(self.num_scene):
                     obj = self.agents[scene_id][0].get_state().position if self.render_settings["position"] is None else std_to_habitat(self.render_settings["position"], None)[0]
                     camera_pose = calc_camera_transform(
-                        eye_translation=(self.agents[scene_id][0].scene_node.transformation * mn.Vector4(rela_pos,1)).xyz,
+                        eye_translation=(self.agents[scene_id][0].scene_node.transformation * mn.Vector4(rela_pos, 1)).xyz,
                         lookat=obj
                     )
                     self._render_camera[scene_id].set_state(
@@ -718,10 +734,11 @@ class SceneManager(ABC):
             ]
 
             # get render agent handles in each scene
-            if self.render_settings is not None:
+            self._obj_mgrs[scene_id] = self.scenes[scene_id].get_rigid_object_manager()
+
+            if self.render_settings is not None or self.is_multi_drone:
                 self._render_camera[scene_id] = self.scenes[scene_id].get_agent(self.num_agent_per_scene)
                 # create line renders and object managers
-                self._obj_mgrs[scene_id] = self.scenes[scene_id].get_rigid_object_manager()
                 self._line_mgrs[scene_id] = self.scenes[scene_id].get_debug_line_render()
                 self._line_mgrs[scene_id].set_line_width(self.render_settings["line_width"])
                 # create objects in each scene
@@ -730,26 +747,30 @@ class SceneManager(ABC):
                         self._drone_path[agent_id % len(self._drone_path)]
                     )
 
-            if self.is_multi_drone:
-                if self._drones[scene_id][0] is None:
-                    self._obj_mgrs[scene_id] = self.scenes[scene_id].get_rigid_object_manager()
-                for agent_id in range(self.num_agent_per_scene):
-                    self._drones[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(
-                        self._drone_path[agent_id % len(self._drone_path)]
-                    )
+            # if self.is_multi_drone:
+                # if self._drones[scene_id][0] is None:
+                #     self._obj_mgrs[scene_id] = self.scenes[scene_id].get_rigid_object_manager()
+                # for agent_id in range(self.num_agent_per_scene):
+                #     self._drones[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(
+                #         self._drone_path[agent_id % len(self._drone_path)]
+                #     )
 
             if self.obj_settings:
-                if not self._obj_mgrs[scene_id]:
-                    self._obj_mgrs[scene_id] = self.scenes[scene_id].get_rigid_object_manager()
+                debug_p = self._obj_loader.next(1)[0]
+                print(debug_p)
                 self._obj_ctrls[scene_id] = \
-                    ObjectManager(scene_handle=self._obj_mgrs[scene_id], **self.obj_settings)
+                    ObjectManager(
+                        obj_mgr=self._obj_mgrs[scene_id],
+                        # scene_node=self.scenes[scene_id].SceneNode,
+                        # scene_node=self.agents[scene_id][0].scene_node,
+                        dt=self.obj_settings["dt"],
+                        path=debug_p
+                    )
 
+                self.scenes[scene_id].update_dynamic_KDtree()
 
-        test = 1
-
-    def _object_step(self):
-        for obj_ctrl in self._obj_ctrls:
-            obj_ctrl.step()
+        if self._obj_ctrls[0]:
+            self._update_dynamics()
 
     def _load_scene(self, scene_path) -> habitat_sim.Simulator:
         """_summary_
@@ -907,4 +928,12 @@ class SceneManager(ABC):
     def collision_point(self):
         return self._collision_point
 
+    def _update_dynamics(self):
+        self.dynamic_object_position = [obj_ctrl.position for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
+    # @property
+    # def dynamic_object_position(self):
+    #     if self.obj_settings:
+    #         return [obj_ctrl.position for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
+    #     else:
+    #         return None
 

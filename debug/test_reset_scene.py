@@ -1,30 +1,14 @@
-#!/usr/bin/env python3
-
-import sys
-import os
-import torch as th
-import numpy as np
-
-# Add the correct path to import VisFly modules
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-
 from VisFly.envs.NavigationEnv import NavigationEnv2
+import cv2 as cv
+import torch as th
+import time
+import numpy as np
 from habitat_sim.sensor import SensorType
+from VisFly.utils.maths import Quaternion
 
-def test_scene_reset():
-    """Test scene reset functionality"""
-    print("=== Testing Scene Reset Functionality ===")
-    
-    # Configuration
-    scene_path = "../datasets/spy_datasets/configs/garage_simple_l_medium"
-    sensor_kwargs = [{
-        "sensor_type": SensorType.DEPTH,
-        "uuid": "depth",
-        "resolution": [64, 64],
-    }]
-    
-    random_kwargs = {
-        "state_generator": {
+random_kwargs = {
+    "state_generator":
+        {
             "class": "Uniform",
             "kwargs": [
                 {"position": {"mean": [1., 0., 1.5], "half": [2.0, 2.0, 1.0]}},
@@ -44,23 +28,39 @@ scene_kwargs = {
         "mode": "fix",
         "view": "custom",
         "resolution": [1080, 1920],
-        # "position": th.tensor([[6., 6.8, 5.5], [6,4.8,4.5]]),
         "position": th.tensor([[7., 6.8, 5.5], [7, 4.8, 4.5]]),
         "line_width": 6.,
-
-        # "point": th.tensor([[9., 0, 1], [1, 0, 1]]),
         "trajectory": True,
     }
 }
+
+# Add proper dynamics_kwargs
+dynamics_kwargs = {
+    "action_type": "bodyrate",
+    "ori_output_type": "quaternion",
+    "dt": 0.005,
+    "ctrl_dt": 0.03,
+    "ctrl_delay": True,
+    "comm_delay": 0.09,
+    "action_space": (-1, 1),
+    "integrator": "euler",
+    "drag_random": 0,
+}
+
 num_agent = 4
 env = NavigationEnv2(
     visual=True,
     num_scene=1,
     num_agent_per_scene=num_agent,
     random_kwargs=random_kwargs,
+    dynamics_kwargs=dynamics_kwargs,
     scene_kwargs=scene_kwargs,
     sensor_kwargs=sensor_kwargs
 )
 
+print("Environment created successfully!")
 env.reset()
+print("Environment reset successfully!")
 env.reset_env_by_id(0)
+print("Environment reset by ID successfully!")
+print("Test completed!") 

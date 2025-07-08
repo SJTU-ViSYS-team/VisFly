@@ -19,9 +19,7 @@ random_kwargs = {
             ]
         }
 }
-
-# Use a working scene path
-scene_path = "../datasets/spy_datasets/configs/garage_simple_l_medium"
+scene_path = "VisFly/datasets/visfly-beta/configs/garage_empty"
 sensor_kwargs = [{
     "sensor_type": SensorType.DEPTH,  # Changed to DEPTH for consistency
             "uuid": "depth",

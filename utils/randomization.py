@@ -30,18 +30,12 @@ class StateRandomizer:
     def _generate(self, num) -> tuple:
         pass
 
-    # @abstractmethod
-    def _eval_generate(self, num) -> tuple:
-        return self._generate(num)
-
-    def generate(self, num, _eval=False):
-        raw_pos, raw_ori, raw_vel, raw_ang_vel = self._generate(num)
-        if _eval:
-            raw_pos, raw_ori, raw_vel, raw_ang_vel = self._eval_generate(num)
+    def generate(self, num, **kwargs):
+        raw_pos, raw_ori, raw_vel, raw_ang_vel = self._generate(num,  **kwargs)
         return raw_pos, raw_ori, raw_vel, raw_ang_vel
 
-    def safe_generate(self, num=1, _eval=False):
-        raw_pos, raw_ori, raw_vel, raw_ang_vel = self.generate(num, _eval=False)
+    def safe_generate(self, num=1, **kwargs):
+        raw_pos, raw_ori, raw_vel, raw_ang_vel = self.generate(num,  **kwargs)
         position = raw_pos
         orientation = raw_ori
         velocity = raw_vel
@@ -56,7 +50,7 @@ class StateRandomizer:
             while True:
                 if not is_collision.any():
                     break
-                raw_pos, raw_ori, raw_vel, raw_ang_vel = self.generate(is_collision.sum(), _eval=False)
+                raw_pos, raw_ori, raw_vel, raw_ang_vel = self.generate(is_collision.sum(),  **kwargs)
                 position[is_collision, :] = raw_pos
                 orientation[is_collision, :] = raw_ori
                 velocity[is_collision, :] = raw_vel
@@ -105,7 +99,7 @@ class UniformStateRandomizer(StateRandomizer):
         self.velocity = Uniform(**velocity)
         self.angular_velocity = Uniform(**angular_velocity)
 
-    def _generate(self, num) -> tuple:
+    def _generate(self, num, **kwargs) -> tuple:
         position = (2 * th.rand(num, 3) - 1) * self.position.half + self.position.mean
         orientation = (2 * th.rand(num, 3) - 1) * self.orientation.half + self.orientation.mean
         velocity = (2 * th.rand(num, 3) - 1) * self.velocity.half + self.velocity.mean
@@ -138,13 +132,49 @@ class NormalStateRandomizer(StateRandomizer):
 
         self.position = Normal(**position)
 
-    def _generate(self, num) -> tuple:
+    def _generate(self, num, **kwargs) -> tuple:
         position = th.randn(num, 3) * self.position.std + self.position.mean
         orientation = th.randn(num, 3) * self.orientation.std + self.orientation.mean
         velocity = th.randn(num, 3) * self.velocity.std + self.velocity.mean
         angular_velocity = th.randn(num, 3) * self.angular_velocity.std + self.angular_velocity.mean
         return position, orientation, velocity, angular_velocity
 
+
+class TargetUniformRandomizer(UniformStateRandomizer):
+    def __init__(self, mini_dis=0.5, *args, **kwargs):
+        self.mini_dis = mini_dis
+        super().__init__(*args, **kwargs)
+        
+    def _generate(self, num, **kwargs) -> tuple:
+        def calculate_yaw_pitch(vector):
+            """s
+            Calculate the yaw and pitch angles of a vector.
+
+            Args:
+                vector (np.ndarray): A 3D vector [x, y, z].
+
+            Returns:
+                tuple: (yaw, pitch) in radians.
+            """
+            x, y, z = vector[:, 0], vector[:, 1], vector[:, 2]
+
+            # Calculate yaw (arctan2 handles the quadrant correctly)
+            yaw = th.arctan2(y, x)
+            yaw = th.arccos(x / vector[:,:2].norm(dim=1)) * y.sign()
+            # Calculate pitch
+            norm = th.linalg.norm(vector)  # Magnitude of the vector
+            pitch = th.arcsin(z / norm)
+            return yaw, pitch
+        target_position = kwargs["position"]
+        position = ((2 * th.rand(num, 3) - 1) * self.position.half)
+        position = position.sign() * position.abs().clamp_min(self.mini_dis) + target_position.unsqueeze(0)
+        direction = target_position.unsqueeze(0)-position
+        yaw, pitch = calculate_yaw_pitch(direction)
+        orientation = th.stack([th.zeros(num), pitch*0, yaw], dim=1) + (2 * th.rand(num, 3) - 1) * self.orientation.half # yaw, pitch, roll
+        velocity = (2 * th.rand(num, 3) - 1) * self.velocity.half + self.velocity.mean
+        angular_velocity = (2 * th.rand(num, 3) - 1) * self.angular_velocity.half + self.angular_velocity.mean
+
+        return position, orientation, velocity, angular_velocity
 
 class UnionRandomizer:
     Randomizer_alias = {
@@ -191,10 +221,10 @@ class UnionRandomizer:
         row = th.arange(num)
         return position[row, select_randomizer_index], orientation[row, select_randomizer_index], velocity[row, select_randomizer_index], angular_velocity[row, select_randomizer_index]
 
-    def safe_generate(self, num, _eval=False) -> tuple:
+    def safe_generate(self, num) -> tuple:
         position, orientation, velocity, angular_velocity = [], [], [], []
         for randomizer in self.randomizers:
-            pos, ori, vel, ang_vel = randomizer.safe_generate(num, _eval=_eval)
+            pos, ori, vel, ang_vel = randomizer.safe_generate(num)
             position.append(pos)
             orientation.append(ori)
             velocity.append(vel)
@@ -204,3 +234,34 @@ class UnionRandomizer:
         select_randomizer_index = th.randint(0, len(self.randomizers), (num,))
         row = th.arange(num)
         return position[select_randomizer_index, row, :], orientation[select_randomizer_index, row, :], velocity[select_randomizer_index, row, :], angular_velocity[select_randomizer_index, row, :]
+
+
+def load_generator(cls, kwargs, is_collision_func=None, scene_id=None, device="cpu"):
+    cls_alias = {
+        "Uniform": UniformStateRandomizer,
+        "Normal": NormalStateRandomizer,
+        "Union": UnionRandomizer,
+        "TargetUniform": TargetUniformRandomizer
+    }
+
+    if isinstance(cls, str):
+        cls = cls_alias[cls]
+
+    return cls(is_collision_func=is_collision_func, scene_id=scene_id, device=device, **kwargs)
+
+
+def load_dist(data):
+    cls_alias = {
+        "Uniform": Uniform,
+        "Normal": Normal,
+    }
+    if not isinstance(data, dict):
+        kwargs = {
+            "mean": data,
+            "half": 0.
+        }
+        cls = Uniform
+    else:
+        cls = cls_alias[data["class"]]
+        kwargs = data["kwargs"]
+    return cls(**kwargs)

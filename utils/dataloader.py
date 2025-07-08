@@ -34,10 +34,11 @@ class SimpleDataLoader:
         self._current_batch_index = 0
         return self
 
-    def next(self, num):
+    def next(self, num=None):
+        num = num if num else self.batch_size
         indices = (th.arange(num) + self._current_index) % len(self)
         _select_indices = [self._select_index[i] for i in indices]
-        self._current_index = (self._current_index + self.batch_size) % len(self)
+        self._current_index = (self._current_index + num) % len(self)
         return [self.paths[i] for i in _select_indices]
 
     def __next__(self):

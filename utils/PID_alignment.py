@@ -31,7 +31,7 @@ class bag_plot:
     def __init__(self):
         
         # self.device = th.device("cuda" if th.cuda.is_available() else "cpu")
-        self.scene_path = "datasets/spy_datasets/configs/garage_empty"
+        self.scene_path = "datasets/visfly-beta/configs/garage_empty"
         self.m = 0.46
         # self.bag_file = '/home/suncc/suncc/My-research/Vision-based-Racing/waypoint1.bag'
         # self.bag_file = 'debug/pid_test_all_y2.bag'

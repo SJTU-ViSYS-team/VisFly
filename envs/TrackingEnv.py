@@ -27,6 +27,7 @@ class TrackEnv(DroneGymEnvsBase):
             target: Optional[th.Tensor] = None,
             max_episode_steps: int = 256,
             latent_dim=None,
+            tensor_output=False,
     ):
         self.center = th.as_tensor([2, 0, 1])
         self.next_points_num = 10
@@ -40,7 +41,7 @@ class TrackEnv(DroneGymEnvsBase):
                 {
                     "class": "Uniform",
                     "kwargs": [
-                        {"position": {"mean": [self.center[0] + self.radius, 0., self.center[2]],
+                        {"position": {"mean": [self.center[0], 0., self.center[2]],
                                       "half": [.2, .2, 0.2]}},
                     ]
                 }
@@ -58,6 +59,7 @@ class TrackEnv(DroneGymEnvsBase):
             scene_kwargs=scene_kwargs,
             device=device,
             max_episode_steps=max_episode_steps,
+            tensor_output=tensor_output,
         )
 
         self.observation_space["state"] = spaces.Box(
@@ -67,16 +69,20 @@ class TrackEnv(DroneGymEnvsBase):
             dtype=np.float32
         )
 
+        self.update_target()
+
+    def update_target(self):
+        ts = self.t.repeat(self.next_points_num, 1).T + th.arange(self.next_points_num) * self.dt
+        self.target = (th.stack([self.radius * th.cos(self.radius_spd * ts) + self.center[0],
+                                 self.radius * th.sin(self.radius_spd * ts) + self.center[1],
+                                 0 * th.sin(self.radius_spd * ts) + self.center[2]
+                                 ])
+                       ).permute(1, 2, 0)
+
     def get_observation(
             self,
             indices=None
     ) -> Dict:
-        ts = self.t.repeat(self.next_points_num, 1).T + th.arange(self.next_points_num) * self.dt
-        self.target = (th.stack([self.radius * th.cos(self.radius_spd * ts) + self.center[0],
-                                 self.radius * th.sin(self.radius_spd * ts) + self.center[1],
-                                 th.zeros(ts.shape) + self.center[2]])
-                       ).permute(1, 2, 0)
-        # self.target = self.trajs[self.current_traj_index, target_index]
         diff_pos = self.target - self.position.unsqueeze(1)
         # consider target as next serveral waypoint
         diff_pos_flatten = diff_pos.reshape(self.num_envs, -1)
@@ -127,7 +133,13 @@ class TrackEnv2(TrackEnv):
             target: Optional[th.Tensor] = None,
             max_episode_steps: int = 256,
             latent_dim=None,
+            tensor_output=False,
     ):
+        sensor_kwargs = [{
+            "sensor_type": SensorType.DEPTH,
+            "uuid": "depth",
+            "resolution": [64, 64],
+        }]
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
             num_scene=num_scene,
@@ -141,5 +153,26 @@ class TrackEnv2(TrackEnv):
             device=device,
             max_episode_steps=max_episode_steps,
             target=target,
-            latent_dim=latent_dim
+            latent_dim=latent_dim,
+            tensor_output=tensor_output
         )
+
+    def get_observation(
+            self,
+            indices=None
+    ) -> Dict:
+        diff_pos = self.target - self.position.unsqueeze(1)
+        # consider target as next serveral waypoint
+        diff_pos_flatten = diff_pos.reshape(self.num_envs, -1)
+
+        state = th.hstack([
+            diff_pos_flatten / self.max_sense_radius,
+            self.orientation,
+            self.velocity / 10,
+            self.angular_velocity / 10,
+        ]).to(self.device)
+
+        return TensorDict({
+            "state": state,
+            "depth": th.as_tensor(self.sensor_obs["depth"]/10).clamp(max=1)
+        })
