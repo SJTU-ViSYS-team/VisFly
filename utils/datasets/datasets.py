@@ -1,6 +1,9 @@
 from torch.utils.data import Dataset
 import glob
 import os
+import sys
+# Ensure the project root (the directory containing 'VisFly') is on PYTHONPATH when the script is run directly.
+sys.path.append(os.getcwd())
 from typing import List, Union
 from dataclasses import dataclass
 import habitat_sim
@@ -184,8 +187,9 @@ class SceneGenerator:
             else:
                 if self.setting.stage == "garage":
                     scene_json["default_lighting"] = "lighting/garage_v1_0"
-                # elif self.setting.stage == "box":
-                #     scene_json["default_lighting"] = "lighting/box_v1_0"
+                elif self.setting.stage == "box":
+                    # Use a generic lighting config for the box stage (fallback to garage lighting if box lighting is absent)
+                    scene_json["default_lighting"] = "lighting/box_v1_0" if os.path.exists(os.path.join(self.path, "configs/lighting/box_v1_0.lighting_config.json")) else "lighting/garage_v1_0"
                 elif "10plane" in self.setting.stage:
                     scene_json["default_lighting"] = "lighting/10plane_0"
                 else:
@@ -216,6 +220,10 @@ class SceneGenerator:
         Returns:
             _type_: _description_
         """
+        # Fast path: hard-code bounds for the box_v1 training room so we don't need nav-mesh computation.
+        if "box_v1" in stage_name or "box" in stage_name:
+            # X 0-20, Y –10-10, Z 0-8 (same as garage default but centred) – adjust as needed
+            return [[0, -10, 0], [20, 10, 8]]
         if "garage" in stage_name:
             return [[0, -7, 0], [18, 7, 5.]]
         elif "10plane_wall" in stage_name:
@@ -225,7 +233,8 @@ class SceneGenerator:
         scene_save_path = f"{self.save_path}/temp.scene_instance.json"
         self._save_json_file(scene_save_path, scene_json)
         habitat_sim_cfg = habitat_sim.SimulatorConfiguration()
-        habitat_sim_cfg.scene_dataset_config_file = "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+        # Use dataset config relative to the provided dataset root path
+        habitat_sim_cfg.scene_dataset_config_file = os.path.join(self.path, "spy_datasets.scene_dataset_config.json")
         habitat_sim_cfg.enable_physics = False
         agent_cfg = habitat_sim.agent.AgentConfiguration()
         sim = habitat_sim.Simulator(habitat_sim.Configuration(habitat_sim_cfg,[agent_cfg]))
@@ -255,6 +264,8 @@ class SceneGenerator:
             return "stages/garage_v1"
         elif self.setting.stage == "10plane_wall":
             return "stages/10plane_wall"
+        elif self.setting.stage == "box":
+            return "stages/box_v1"
         elif self.setting.stage == "random":
             pass
         else:
@@ -436,8 +447,11 @@ if __name__ == "__main__":
         object_margin = np.array([[3,0,0],[7,0,5]])
     elif args.scene == "10plane_wall":
         object_margin = np.array([[3,0,0],[3,0,8]])
+    elif args.scene == "box":
+        # conservative margins for a 20×20×8 m box: keep 3 m clear behind/above, 5 m in front/left/up
+        object_margin = np.array([[3,0,0],[5,0,5]])
     g = SceneGenerator(
-        path="datasets/spy_datasets",
+        path="VisFly/datasets/spy_datasets",
         num=args.quantity,
         name=args.name if args.name is not None else args.scene,
         setting=SceneGeneratorSetting(
@@ -448,7 +462,8 @@ if __name__ == "__main__":
             # object_margin=(0, 0, 0),
             light_random=False,
             stage=args.scene,
-            object_set="objects/pillar"
+            # Use generic objects directory (change if you add a dedicated pillar set)
+            object_set="objects"
         )
     )
     if args.generate:

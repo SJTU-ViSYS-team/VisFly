@@ -119,7 +119,7 @@ def calc_required_input_dim(net, target_output_shape):
 
 
 class AutoTransDimBatchNorm1d(nn.BatchNorm1d):
-    def __init__(self,*args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(AutoTransDimBatchNorm1d, self).__init__(*args,**kwargs)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -270,10 +270,10 @@ def create_mlp(
         layer: List[int] = [],
         output_dim: Optional[int] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
-        bn: Union[bool, List] = False,
+        batch_norm: Union[bool, List] = False,
         squash_output: bool = False,
         bias: bool = True,
-        ln: Union[bool, List] = False,
+        layer_norm: Union[bool, List] = False,
         device: th.device = th.device("cpu")
 
 ) -> nn.Module:
@@ -288,36 +288,37 @@ def create_mlp(
         The length of this list is the number of layers.
     :param activation_fn: The activation function
         to use after each layer.
-    :param bn: Whether to use batch normalization or not
+    :param batch_norm: Whether to use batch normalization or not
     :param squash_output: Whether to squash the output using a Tanh
         activation function
-    :param with_bias: If set to False, the layers will not learn an additive bias
-    :param ln: If set to False, Whether to use layer normalization or not
+    :param bias: If set to False, the layers will not learn an additive bias
+    :param layer_norm: Whether to use layer normalization or not
     :param device: Device on which the neural network should be run.
 
     :return:
     """
-    # if batch_norm and layer_norm:
-    #     raise ValueError("batch normalization and layer normalization should not be both implemented.")
-    # bn = [bn] * len(layer) if isinstance(bn, bool) else bn
-    # ln = [ln] * len(layer) if isinstance(ln, bool) else ln
-    # for each_batch_norm, each_layer_norm in zip(bn, ln):
-    #     assert not (each_batch_norm and each_layer_norm), "batch normalization and layer normalization should not be both implemented."
+    # Convert boolean to list if needed
+    batch_norm = [batch_norm] * len(layer) if isinstance(batch_norm, bool) else batch_norm
+    layer_norm = [layer_norm] * len(layer) if isinstance(layer_norm, bool) else layer_norm
+    
+    # Check for conflicts between batch_norm and layer_norm
+    for each_batch_norm, each_layer_norm in zip(batch_norm, layer_norm):
+        assert not (each_batch_norm and each_layer_norm), "batch normalization and layer normalization should not be both implemented."
 
-    # if input batch_norm list length is shorter than layer, then complete the list with False
-    # if len(bn) < len(layer):
-    #     bn += [False] * (len(layer) - len(bn))
-    # if len(ln) < len(layer):
-    #     ln += [False] * (len(layer) - len(ln))
+    # Complete lists if shorter than layer
+    if len(batch_norm) < len(layer):
+        batch_norm += [False] * (len(layer) - len(batch_norm))
+    if len(layer_norm) < len(layer):
+        layer_norm += [False] * (len(layer) - len(layer_norm))
 
     modules = []
     prev_dim = input_dim
     for idx in range(len(layer)):
         modules.append(nn.Linear(prev_dim, layer[idx], bias=bias))
         prev_dim = layer[idx]
-        if bn:
-            modules.append(AutoTransDimBatchNorm1d(layer[idx]))
-        elif ln:
+        if batch_norm[idx]:
+            modules.append(nn.BatchNorm1d(layer[idx]))
+        elif layer_norm[idx]:
             modules.append(nn.LayerNorm(layer[idx], eps=1e-3))
         modules.append(activation_fn())
 
@@ -336,9 +337,7 @@ def create_mlp(
 
     net = nn.Sequential(*modules).to(device)
 
-    output_dim = output_dim if output_dim is not None else prev_dim
-
-    return net, output_dim
+    return net
 
 
 def set_recurrent_feature_extractor(cls, input_size, rnn_setting):
@@ -354,7 +353,8 @@ def set_recurrent_feature_extractor(cls, input_size, rnn_setting):
 
 
 def set_mlp_feature_extractor(cls, name, observation_space, net_arch, activation_fn):
-    layer = net_arch.get("layer", [])
+    # Check "mlp_layer" first to match old_VisFly behavior
+    layer = net_arch.get("mlp_layer", []) or net_arch.get("layer", [])
     features_dim = layer[-1] if len(layer) != 0 else observation_space.shape[0]
     if hasattr(observation_space, "shape"):
         input_dim = observation_space.shape[0] if len(observation_space.shape) == 1 else observation_space.shape[1]
@@ -362,12 +362,12 @@ def set_mlp_feature_extractor(cls, name, observation_space, net_arch, activation
         input_dim = observation_space
     # input_dim = observation_space.shape[0] if len(observation_space.shape) == 1 else observation_space.shape[1]
 
-    net, output_dim = create_mlp(
+    net = create_mlp(
         input_dim=input_dim,
         layer=layer,
         activation_fn=activation_fn,
-        bn=net_arch.get("bn", False),
-        ln=net_arch.get("ln", False)
+        batch_norm=net_arch.get("bn", False),
+        layer_norm=net_arch.get("ln", False)
     )
     setattr(cls, name + "_extractor", net)
     if not hasattr(cls, '_extract_names'):
@@ -386,6 +386,9 @@ def set_trans_cnn_feature_extractor(cls, name, input_dim, target_shape, net_arch
     required_input_dim = calc_required_input_dim(net, target_shape)
     flatten_dim = th.prod(th.as_tensor(required_input_dim))
     modules = [nn.Linear(input_dim, flatten_dim), net]
+    # Ensure _extract_names is initialized before appending
+    if not hasattr(cls, '_extract_names'):
+        cls._extract_names = []
     cls._extract_names.append(name)
     setattr(cls, name + "_decoder", nn.Sequential(*modules))
 
@@ -402,11 +405,15 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
                                               stride=image_extractor.conv1.stride,
                                               padding=image_extractor.conv1.padding,
                                               bias=image_extractor.conv1.bias is not None)
-            if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
-                image_extractor.fc, output_dim = create_mlp(
+            # Check "mlp_layer" first to match old_VisFly behavior
+            layer = net_arch.get("mlp_layer", []) or net_arch.get("layer", [])
+            if len(layer) > 0:
+                image_extractor.fc = create_mlp(
                     input_dim=image_extractor.fc.in_features,
+                    layer=layer,
                     activation_fn=activation_fn,
-                    **net_arch
+                    batch_norm=net_arch.get("bn", False),
+                    layer_norm=net_arch.get("ln", False)
                 )
         elif "efficientnet" in backbone:
             image_extractor.features[0][0] = nn.Conv2d(image_channels, image_extractor.features[0][0].out_channels,
@@ -415,11 +422,15 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
                                                        padding=image_extractor.features[0][0].padding,
                                                        bias=image_extractor.features[0][0].bias is not None)
 
-            if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
-                image_extractor.classifier[-1], output_dim = create_mlp(
+            # Check "mlp_layer" first to match old_VisFly behavior
+            layer = net_arch.get("mlp_layer", []) or net_arch.get("layer", [])
+            if len(layer) > 0:
+                image_extractor.classifier[-1] = create_mlp(
                     input_dim=image_extractor.classifier[-1].in_features,
+                    layer=layer,
                     activation_fn=activation_fn,
-                    **net_arch
+                    batch_norm=net_arch.get("bn", False),
+                    layer_norm=net_arch.get("ln", False)
                 )
         elif "mobilenet" in backbone:
             image_extractor.features[0][0] = nn.Conv2d(image_channels, image_extractor.features[0][0].out_channels,
@@ -427,11 +438,15 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
                                                        stride=image_extractor.features[0][0].stride,
                                                        padding=image_extractor.features[0][0].padding,
                                                        bias=image_extractor.features[0][0].bias is not None)
-            if net_arch.get("layer", None) is not None and len(net_arch.get("layer", [])) > 0:
-                image_extractor.classifier[-1], output_dim = create_mlp(
+            # Check "mlp_layer" first to match old_VisFly behavior
+            layer = net_arch.get("mlp_layer", []) or net_arch.get("layer", [])
+            if len(layer) > 0:
+                image_extractor.classifier[-1] = create_mlp(
                     input_dim=image_extractor.classifier[-1].in_features,
+                    layer=layer,
                     activation_fn=activation_fn,
-                    **net_arch
+                    batch_norm=net_arch.get("bn", False),
+                    layer_norm=net_arch.get("ln", False)
                 )
         else:
             raise ValueError("Backbone not supported.")
@@ -451,20 +466,24 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
             )
         )
         _image_features_dims = _get_conv_output(image_extractor, observation_space.shape)
-        layer = net_arch.get("layer", [])
+        # Check "mlp_layer" first to match old_VisFly behavior
+        layer = net_arch.get("mlp_layer", []) or net_arch.get("layer", [])
         if len(layer) > 0:
             image_extractor.add_module("mlp",
                                        create_mlp(
                                            input_dim=_image_features_dims,
                                            layer=layer,
                                            activation_fn=activation_fn,
-                                           bn=net_arch.get("bn", False),
-                                           ln=net_arch.get("ln", False)
-                                       )[0]
+                                           batch_norm=net_arch.get("bn", False),
+                                           layer_norm=net_arch.get("ln", False)
+                                       )
                                        )
             # After adding MLP, the output dimension changes to the last layer size
             _image_features_dims = layer[-1]
     setattr(cls, name + "_extractor", image_extractor)
+    # Ensure _extract_names is initialized before appending
+    if not hasattr(cls, '_extract_names'):
+        cls._extract_names = []
     cls._extract_names.append(name)
     return _image_features_dims
 
@@ -542,21 +561,24 @@ class ImageExtractor(CustomBaseFeaturesExtractor):
     def _build(self, observation_space, net_arch, activation_fn):
         # 处理image的卷积层
         _image_features_dims = []
-        self._extract_names = []
+        # Initialize _extract_names only if not already initialized
+        if not hasattr(self, '_extract_names'):
+            self._extract_names = []
+        self._image_extract_names = []  # Separate list for image extractors only
         for key in observation_space.keys():
             if "semantic" in key or "color" in key or "depth" in key:
                 _image_features_dims.append(
                     set_cnn_feature_extractor(self, key, observation_space[key], net_arch.get(key, {}), activation_fn)
                 )
+                self._image_extract_names.append(key)  # Track image extractors separately
         self._features_dim = sum(_image_features_dims)
 
     def extract(self, observations) -> th.Tensor:
         features = []
-        for name in self._extract_names:
+        for name in self._image_extract_names:
             x = getattr(self, name + "_extractor")(observations[name])
             features.append(x)
         combined_features = th.cat(features, dim=1)
-
         return combined_features
 
 
@@ -620,36 +642,16 @@ class StateTargetImageExtractor(ImageExtractor):
 
     def _build(self, observation_space, net_arch, activation_fn):
         super()._build(observation_space, net_arch, activation_fn)
-        _image_features_dim = self._features_dim  # Store the image features dimension from parent
         _state_features_dim = set_mlp_feature_extractor(self, "state", observation_space["state"], net_arch.get("state", {}), activation_fn)
         _target_features_dim = set_mlp_feature_extractor(self, "target", observation_space["target"], net_arch.get("target", {}), activation_fn)
-        
-        # Check if there are actually any image features (extractors with image-like names)
-        has_image_features = any("semantic" in name or "color" in name or "depth" in name 
-                                for name in self._extract_names)
-        
-        if has_image_features:
-            self._features_dim = _state_features_dim + _target_features_dim + _image_features_dim
-        else:
-            self._features_dim = _state_features_dim + _target_features_dim
+        self._features_dim = _state_features_dim + _target_features_dim + self._features_dim
 
     def extract(self, observation):
         state_features = self.state_extractor(observation['state'])
         target_features = self.target_extractor(observation['target'])
-        
-        # Extract only image features, not all features in _extract_names
-        image_features = []
-        for name in self._extract_names:
-            if "semantic" in name or "color" in name or "depth" in name:
-                x = getattr(self, name + "_extractor")(observation[name])
-                image_features.append(x)
-        
-        if image_features:
-            combined_image_features = th.cat(image_features, dim=1)
-            return th.cat([state_features, target_features, combined_image_features], dim=1)
-        else:
-            # No image features found - just return state and target features
-            return th.cat([state_features, target_features], dim=1)
+        image_features = super().extract(observation)
+        combined_features = th.cat([state_features, target_features, image_features], dim=1)
+        return combined_features
 
 
 class SwarmStateTargetImageExtractor(StateTargetImageExtractor):
@@ -783,12 +785,12 @@ class FlexibleMLP(nn.Module):
 
         self._features_dim = sum(features_dims)
 
-        self.net, output_dim = create_mlp(
+        self.net = create_mlp(
             input_dim=self._features_dim,
             layer=net_arch.get("layer", []),
             activation_fn=activation_fn,
-            bn=net_arch.get("bn", False),
-            ln=net_arch.get("ln", False)
+            batch_norm=net_arch.get("bn", False),
+            layer_norm=net_arch.get("ln", False)
         )
 
     def forward(self, x):

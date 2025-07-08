@@ -3,9 +3,10 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from typing import Optional
 import os, sys
-
+import torch
 from VisFly.utils.evaluate import TestBase
 from VisFly.utils.FigFashion.FigFashion import FigFon
+from VisFly.utils.maths import Quaternion
 
 class Test(TestBase):
     def __init__(self, model, name, save_path: Optional[str] = None):
@@ -54,11 +55,15 @@ class Test(TestBase):
         ax2.set_zlim(mid_z - max_range, mid_z + max_range)
         # Orientation quaternion plot
         ax3 = plt.subplot(2, 2, 3)
-        ax3.plot(t, state_data[:, 0, 3:7])
-        ax3.set_title("Orientation Quaternion")
-        ax3.set_ylabel("Quaternion")
+        state_data = torch.from_numpy(state_data)
+        q = Quaternion(state_data[:, 0, 3], state_data[:, 0, 4], state_data[:, 0, 5], state_data[:, 0, 6]).toEuler().T
+        # to angle
+        angles = q*57.2958
+        ax3.plot(t, angles)
+        ax3.set_title("Orientation Euler")
+        ax3.set_ylabel("Euler")
         ax3.set_xlabel("Time (s)")
-        ax3.legend(["w", "x", "y", "z"])
+        ax3.legend(["roll", "pitch", "yaw"])
         ax3.grid(True)
         # Angular velocity plot
         ax4 = plt.subplot(2, 2, 4)

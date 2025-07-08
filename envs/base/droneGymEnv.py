@@ -182,7 +182,11 @@ class DroneGymEnvsBase(VecEnv):
             self._reward = self._indiv_reward["reward"]
             for key in self._indiv_reward.keys():
                 self._indiv_rewards[key] += self._indiv_reward[key]
-        self._rewards += self._reward
+        # Avoid in-place modification on a tensor that participates in the autograd graph
+        if self.requires_grad:
+            self._rewards = self._rewards.detach() + self._reward
+        else:
+            self._rewards += self._reward
 
         # update collision, timeout _done
         # Ensure all boolean tensors are on the same device before logical operations
@@ -606,6 +610,41 @@ class DroneGymEnvsBase(VecEnv):
 
     def to(self, device):
         self.device = device if not isinstance(device, str) else th.device(device)
+        
+        # Move the underlying environment and its dynamics to the new device
+        if hasattr(self, 'envs') and hasattr(self.envs, 'device'):
+            self.envs.device = self.device
+            # Move the dynamics to the new device
+            if hasattr(self.envs, 'dynamics'):
+                self.envs.dynamics.device = self.device
+                self.envs.dynamics._set_device(self.device)
+        
+        # Move environment-specific tensors (like target in NavigationEnv2)
+        if hasattr(self, 'target') and isinstance(self.target, th.Tensor):
+            self.target = self.target.to(self.device)
+        
+        # Move all relevant tensors to the new device to avoid device mismatch errors
+        tensor_attrs = [
+            '_step_count', '_reward', '_rewards', '_action', '_success', '_failure', '_episode_done', '_done'
+        ]
+        for attr in tensor_attrs:
+            t = getattr(self, attr, None)
+            if isinstance(t, th.Tensor):
+                setattr(self, attr, t.to(self.device))
+        # Also move deter and stoch if they exist
+        if hasattr(self, 'deter') and isinstance(self.deter, th.Tensor):
+            self.deter = self.deter.to(self.device)
+        if hasattr(self, 'stoch') and isinstance(self.stoch, th.Tensor):
+            self.stoch = self.stoch.to(self.device)
+        # Optionally, move _indiv_rewards and _indiv_reward if they exist and are dicts of tensors
+        if hasattr(self, '_indiv_rewards') and isinstance(self._indiv_rewards, dict):
+            for k, v in self._indiv_rewards.items():
+                if isinstance(v, th.Tensor):
+                    self._indiv_rewards[k] = v.to(self.device)
+        if hasattr(self, '_indiv_reward') and isinstance(self._indiv_reward, dict):
+            for k, v in self._indiv_reward.items():
+                if isinstance(v, th.Tensor):
+                    self._indiv_reward[k] = v.to(self.device)
 
     def eval(self):
         self.envs.eval()

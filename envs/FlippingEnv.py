@@ -1,8 +1,14 @@
 import torch as th
 from gymnasium import spaces
-from .base.droneGymEnv import DroneGymEnvsBase
-from ..utils.type import TensorDict
+import os
+import sys
 
+# Add the project root to Python path to enable imports
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
+from VisFly.envs.base.droneGymEnv import DroneGymEnvsBase
+from VisFly.utils.type import TensorDict
 class FlippingEnv(DroneGymEnvsBase):
     def __init__(
             self,
@@ -60,8 +66,8 @@ class FlippingEnv(DroneGymEnvsBase):
 
     def get_analytical_reward(self) -> th.Tensor:
         # 1. Roll Axes - reward for roll angular velocity around x-axis
-        roll_rate = self.angular_velocity[:, 0].clone().abs()
-        roll_reward = 0.1 * roll_rate
+        # roll_rate = self.angular_velocity[:, 0].clone().abs()
+        # roll_reward = 0.1 * roll_rate
 
         # 2. Z-axis alignment reward
         current_z_axis = self._quat_rotate_vector(
@@ -69,30 +75,32 @@ class FlippingEnv(DroneGymEnvsBase):
             th.tensor([0., 0., 1.], device=self.device)
         )
         target_z_axis = th.tensor([0., 0., 1.], device=self.device).expand_as(current_z_axis)
-        z_alignment = th.sum(current_z_axis * target_z_axis, dim=1)
-        orientation_reward = 0.5 * z_alignment
+        omega = 3.0
+        target_z_circle = th.tensor([th.zeros_like(self.t), th.sin(self.t * omega), th.cos(self.t * omega)], device=self.device)
+        z_alignment = th.sum(current_z_axis * target_z_circle, dim=1)
+        # orientation_reward = 0.5 * z_alignment
 
         # 3. Velocity Penalty
-        linear_vel_penalty = -0.001 * self.velocity.clone().norm(dim=1)
-        angular_vel_penalty = -0.01 * self.angular_velocity[:, 1:].clone().norm(dim=1)
+        # linear_vel_penalty = -0.001 * self.velocity.clone().norm(dim=1)
+        # angular_vel_penalty = -0.01 * self.angular_velocity[:, 1:].clone().norm(dim=1)
 
         # 4. Position Reward
-        target_position = th.tensor([0., 0., 1.], device=self.device).expand_as(self.position)
-        position_error = th.norm(self.position.clone() - target_position, dim=1)
-        position_reward = -0.01 * position_error
+        # target_position = th.tensor([0., 0., 1.], device=self.device).expand_as(self.position)
+        # position_error = th.norm(self.position.clone() - target_position, dim=1)
+        # position_reward = -0.01 * position_error
 
         # 5. Dense orientation reward - based on quaternion real part
-        quat_real = self.orientation[:, 0].clone()
-        dense_orientation_reward = 0.1 * quat_real
+        # quat_real = self.orientation[:, 0].clone()
+        # dense_orientation_reward = 0.1 * quat_real
 
         # Combine all components
         total_reward = (
-            roll_reward
-            + orientation_reward
-            + linear_vel_penalty
-            + angular_vel_penalty
-            + position_reward
-            + dense_orientation_reward
+            # roll_reward
+            + z_alignment
+            # + linear_vel_penalty
+            # + angular_vel_penalty
+            # + position_reward
+            # + dense_orientation_reward
         )
 
         # Bonus for success
@@ -134,3 +142,27 @@ class FlippingEnv(DroneGymEnvsBase):
         self.prev_w_sign = th.sign(w)
         self.half_flip_counts = th.zeros(self.num_envs, dtype=th.int64, device=self.device)
         return obs 
+    
+if __name__ == "__main__":
+    # Make sure the quat_rotate_vector is aligned with the R function
+    from VisFly.utils.maths import Quaternion
+    import torch as th
+    env = FlippingEnv(
+        num_agent_per_scene=1,
+        seed=42,
+        visual=False,
+        requires_grad=False,
+        random_kwargs={
+            "state_generator": {
+                "class": "Uniform",
+                "kwargs": [
+                    {"position": {"mean": [0., 0., 0.], "half": [0.0, 0.0, 0.0]},
+                    "orientation": {"mean": [0.5235, 0., 0.], "half": [0.0, 0.0, 0.0]}},
+                ]
+            }
+        }
+    )
+    env.reset()
+    print(env.orientation)
+    print(Quaternion(w=env.orientation[:, 0], x=env.orientation[:, 1], y=env.orientation[:, 2], z=env.orientation[:, 3]).R)
+    print(env._quat_rotate_vector(env.orientation, th.tensor([0., 0., 1.])))

@@ -15,17 +15,23 @@ from VisFly.envs.NavigationEnv import NavigationEnv
 from VisFly.utils.launcher import rl_parser, training_params
 from VisFly.utils.type import Uniform
 from habitat_sim.sensor import SensorType
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 args = rl_parser().parse_args()
 """ SAVED HYPERPARAMETERS """
-training_params["num_env"] = 48
+training_params["num_env"] = 96
 training_params["learning_step"] = 1e7
 training_params["comment"] = args.comment
 training_params["max_episode_steps"] = 256
 training_params["n_steps"] = training_params["max_episode_steps"]
+# Reduce steps per rollout to 128 to lower GPU memory usage
+training_params["n_steps"] = min(training_params["n_steps"], 128)
 training_params["batch_size"] = training_params["num_env"] * training_params["n_steps"]
+# Cap batch size to 4096 to avoid GPU OOM
+training_params["batch_size"] = min(training_params["batch_size"], 4096)
 training_params["learning_rate"] = 1e-3
+# Reduce number of epochs to lessen memory footprint
+training_params["n_epochs"] = 5
 save_folder = os.path.dirname(os.path.abspath(sys.argv[0])) + "/saved/"
 
 scene_path = "VisFly/datasets/spy_datasets/configs/garage_simple_l_medium"
@@ -129,34 +135,39 @@ def main():
     # Testing mode with a trained weight
     else:
         test_model_path = save_folder + args.weight
-        from test import Test
+        from tst import Test
         env = NavigationEnv(num_agent_per_scene=1, visual=True,
                             random_kwargs=random_kwargs,
+                            sensor_kwargs=[{
+                                "sensor_type": SensorType.DEPTH,
+                                "uuid": "depth",
+                                "resolution": [64, 64],
+                            }],
                             scene_kwargs={
                                 "path": scene_path,
                                 "render_settings": {
                                     "mode": "fix",
                                     "view": "custom",
                                     "resolution": [1080, 1920],
-                                    # "position": th.tensor([[6., 6.8, 5.5], [6,4.8,4.5]]),
+                                    "position": th.tensor([[6., 6.8, 5.5], [6,4.8,4.5]]),
                                     "position": th.tensor([[7., 6.8, 5.5], [7, 4.8, 4.5]]),
                                     "line_width": 6.,
 
-                                    # "point": th.tensor([[9., 0, 1], [1, 0, 1]]),
+                                    "point": th.tensor([[9., 0, 1], [1, 0, 1]]),
                                     "trajectory": True,
                                 }
-                            },
-                            latent_dim=latent_dim)
+                            },)
 
         model = ppo.load(test_model_path, env=env)
 
         test_handle = Test(
+            env=env,
             model=model,
             save_path=os.path.dirname(os.path.realpath(__file__)) + "/saved/test",
             name=args.weight)
-        test_handle.test(is_fig=True, is_fig_save=True, is_render=True, is_video=True, is_video_save=True,
+        test_handle.test(is_fig=True, is_fig_save=True,  is_video=True, is_video_save=True,
                          render_kwargs={
-                             # "points": th.tensor([[13., 0, 1], [1, 0, 1]])
+                             "points": th.tensor([[13., 0, 1], [1, 0, 1]])
                          })
 
 

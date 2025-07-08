@@ -511,6 +511,10 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                     )[0]
                     with th.no_grad():
                         terminal_value = self.policy.predict_values(terminal_obs)[0]  # type: ignore[arg-type]
+                        # Convert to python float on CPU for safe arithmetic with numpy
+                        terminal_value = terminal_value.squeeze().cpu().item()
+
+                    # `rewards` is a numpy array on CPU; terminal_value is now a float
                     rewards[idx] += self.gamma * terminal_value
 
             rollout_buffer.add(
@@ -936,11 +940,31 @@ class PPO(OnPolicyAlgorithm):
                 th.nn.utils.clip_grad_norm_(
                     self.policy.parameters(), self.max_grad_norm
                 )
+
                 self.policy.optimizer.step()
 
             self._n_updates += 1
             if not continue_training:
                 break
+
+        # debug
+        def explained_variance(y_pred: np.ndarray, y_true: np.ndarray) -> np.ndarray:
+            """
+            Computes fraction of variance that ypred explains about y.
+            Returns 1 - Var[y-ypred] / Var[y]
+
+            interpretation:
+                ev=0  =>  might as well have predicted zero
+                ev=1  =>  perfect prediction
+                ev<0  =>  worse than just predicting zero
+
+            :param y_pred: the prediction
+            :param y_true: the expected value
+            :return: explained variance of ypred and y
+            """
+            assert y_true.ndim == 1 and y_pred.ndim == 1
+            var_y = np.var(y_true)
+            return np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
         explained_var = explained_variance(
             self.rollout_buffer.values.flatten(), self.rollout_buffer.returns.flatten()
@@ -959,6 +983,7 @@ class PPO(OnPolicyAlgorithm):
 
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
         self.logger.record("train/clip_range", clip_range)
+
         if self.clip_range_vf is not None:
             self.logger.record("train/clip_range_vf", clip_range_vf)
 
@@ -983,6 +1008,7 @@ class PPO(OnPolicyAlgorithm):
 
 class ppo(PPO):
     def __init__(self, comment="", save_path=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.comment = comment
         root = os.path.dirname(os.path.abspath(sys.argv[0]))
         self.save_path = f"{root}/saved" if save_path is None else save_path

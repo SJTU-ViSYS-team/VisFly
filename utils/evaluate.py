@@ -186,8 +186,15 @@ class TestBase:
             cv2.imshow(winname=render_name, mat=image)
             if is_sub_video:
                 for name in self._img_names:
+                    # Convert CUDA tensor to CPU before numpy operations
+                    obs_data = obs[name]
+                    if hasattr(obs_data, 'cpu'):
+                        obs_data = obs_data.cpu()
+                    if hasattr(obs_data, 'numpy'):
+                        obs_data = obs_data.numpy()
+                    
                     cv2.imshow(winname=name,
-                               mat=np.hstack(np.transpose(obs[name], (0,2,3,1) ))
+                               mat=np.hstack(np.transpose(obs_data, (0,2,3,1) ))
                                )
             cv2.waitKey(int(self.env.envs.dynamics.ctrl_dt * 1000))
 
@@ -226,13 +233,20 @@ class TestBase:
             video.write(image)
             if is_sub_video:
                 for i, name in enumerate(self._img_names):
+                    # Convert CUDA tensor to CPU before numpy operations
+                    obs_data = obs[name]
+                    if hasattr(obs_data, 'cpu'):
+                        obs_data = obs_data.cpu()
+                    if hasattr(obs_data, 'numpy'):
+                        obs_data = obs_data.numpy()
+                    
                     if "depth" in name:
                         max_depth = 10
-                        img = np.clip(np.hstack(np.transpose(obs[name], (0, 2, 3, 1))),None, max_depth)
+                        img = np.clip(np.hstack(np.transpose(obs_data, (0, 2, 3, 1))),None, max_depth)
                         img = (cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)*255/max_depth).astype(np.uint8)
                         video_obs[i].write(img)
                     elif "color" in name:
-                        img = np.hstack(np.transpose(obs[name], (0, 2, 3, 1)))
+                        img = np.hstack(np.transpose(obs_data, (0, 2, 3, 1)))
                         img = img.astype(np.uint8)
                         video_obs[i].write(img)
                         # img = (cv2.cvtColor(img, cv2.COLOR_RGB2BGR)).astype(np.uint8)

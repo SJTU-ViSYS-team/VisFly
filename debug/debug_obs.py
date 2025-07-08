@@ -19,11 +19,13 @@ random_kwargs = {
             ]
         }
 }
-scene_path = "VisFly/datasets/spy_datasets/configs/garage_empty"
+
+# Use a working scene path
+scene_path = "../datasets/spy_datasets/configs/garage_simple_l_medium"
 sensor_kwargs = [{
-            "sensor_type": SensorType.COLOR,
+    "sensor_type": SensorType.DEPTH,  # Changed to DEPTH for consistency
             "uuid": "depth",
-            "resolution": [128, 128],
+    "resolution": [64, 64],  # Reduced resolution for testing
             "position": [0,0.2,0.],
         }]
 scene_kwargs = {
@@ -32,14 +34,13 @@ scene_kwargs = {
         "mode": "fix",
         "view": "custom",
         "resolution": [1080, 1920],
-        # "position": th.tensor([[6., 6.8, 5.5], [6,4.8,4.5]]),
         "position": th.tensor([[7., 6.8, 5.5], [7, 4.8, 4.5]]),
         "line_width": 6.,
-
-        # "point": th.tensor([[9., 0, 1], [1, 0, 1]]),
         "trajectory": True,
     }
 }
+
+try:
 num_agent = 4
 env = NavigationEnv2(
     visual=True,
@@ -52,24 +53,36 @@ env = NavigationEnv2(
 )
 
 env.reset()
+    print("Environment created and reset successfully!")
 
 t = 0
-while True:
+    max_steps = 50  # Limit steps for testing
+    while t < max_steps:
     a = th.rand((num_agent, 4))
     env.step(a)
-    # circile position
-    # position = th.tensor([[3., 0, 1]]) + th.tensor([[np.cos(t/10), np.sin(t/10), 0]]) * 2
-    # rotation = Quaternion.from_euler(th.tensor(t/10.), th.tensor(t/10.), th.tensor(t/10)).toTensor().unsqueeze(0)
-    # env.envs.sceneManager.set_pose(position=position, rotation=rotation)
-    # env.envs.update_observation()
+        
+        try:
     img = env.render(is_draw_axes=True)
-    print(env.position[0])
+            print(f"Step {t}: Position = {env.position[0]}")
+            
+            if "depth" in env.sensor_obs:
     obs = env.sensor_obs["depth"]
     cv.imshow("img", img[0])
-    # cv.imshow("obs", np.transpose(obs[0], (1, 2, 0)))
     cv.imshow("obs", obs[0][0])
     cv.waitKey(100)
-    t += 1
+        except Exception as e:
+            print(f"Render error at step {t}: {e}")
+            break
+            
+        t += 1
+
+    cv.destroyAllWindows()
+    print("Test completed successfully!")
+
+except Exception as e:
+    print(f"Error creating environment: {e}")
+    import traceback
+    traceback.print_exc()
 
 
 

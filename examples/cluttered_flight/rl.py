@@ -15,11 +15,11 @@ from VisFly.envs.NavigationEnv import NavigationEnv
 from VisFly.utils.launcher import rl_parser, training_params
 from VisFly.utils.type import Uniform
 from habitat_sim.sensor import SensorType
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 args = rl_parser().parse_args()
 """ SAVED HYPERPARAMETERS """
 training_params["num_env"] = 48
-training_params["learning_step"] = 1e6
+training_params["learning_step"] = 1e7
 training_params["comment"] = args.comment
 training_params["max_episode_steps"] = 256
 training_params["n_steps"] = training_params["max_episode_steps"]

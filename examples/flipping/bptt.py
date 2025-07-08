@@ -52,6 +52,9 @@ random_kwargs = {
     }
 }
 
+dynamics_kwargs = {
+    "ori_output_type": "euler"
+}
 def main():
     if args.train:
         # Create flipping environment
@@ -61,6 +64,7 @@ def main():
             visual=False,
             max_episode_steps=int(training_params["max_episode_steps"]),
             requires_grad=True,  # Enable gradients for BPTT algorithm
+            # dynamics_kwargs=dynamics_kwargs,
         )
         # Initialize environment before training
         env.reset()
@@ -103,6 +107,7 @@ def main():
             random_kwargs=random_kwargs,
             visual=False,  # disable visual to avoid render errors
             max_episode_steps=int(training_params["max_episode_steps"]),
+            # dynamics_kwargs=dynamics_kwargs,
         )
         # Initialize environment before testing
         env.reset()

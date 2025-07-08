@@ -72,7 +72,21 @@ class BPTT(shac):
 
     def _build(self):
         self.name = "BPTT"
-        super()._build()
+        self._create_save_path()
+
+        # Don't try to deepcopy the environment - it contains CUDA tensors and Habitat objects
+        # The eval_env will be set manually in the training script
+        self.eval_env = None
+        self.env.reset()
+        self.env.requires_grad = True
+
+        self.actor = self.policy.actor
+        self.critic = self.policy.critic
+        self.critic_target = self.policy.critic_target
+
+        self.actor_batch_norm_stats = get_parameters_by_name(self.policy.actor, ["running_"])
+        self.critic_batch_norm_stats = get_parameters_by_name(self.policy.critic, ["running_"])
+        self.critic_batch_norm_stats_target = get_parameters_by_name(self.policy.critic_target, ["running_"])
 
     def learn(
             self,
@@ -135,41 +149,48 @@ class BPTT(shac):
 
                     # evaluate
                     if pbar.n - previous_step >= self._dump_step:
-                        with th.no_grad():
-                            eval_info_id_list = [i for i in range(self.num_envs)]
-                            self.eval_env.reset_agent_by_id()
-                            obs = self.eval_env.get_observation()
-                            while True:
-                                actions, _ = self.policy.actor(obs)
-                                clipped_actions = th.clip(
-                                    actions, th.as_tensor(self.action_space.low, device=self.device), th.as_tensor(self.action_space.high, device=self.device)
-                                )
-                                obs, reward, done, info = self.eval_env.step(clipped_actions, is_test=True)
-                                for index in reversed(eval_info_id_list):
-                                    if done[index]:
-                                        eval_info_id_list.remove(index)
-                                        eq_rewards_buffer.append(info[index]["episode"]["r"])
-                                        eq_len_buffer.append(info[index]["episode"]["l"])
-                                        eq_success_buffer.append(info[index]["is_success"])
-                                        eq_info_buffer.append(info[index]["episode"])
-                                if done.all():
-                                    break
+                        # Only evaluate if eval_env exists
+                        if hasattr(self, 'eval_env') and self.eval_env is not None:
+                            with th.no_grad():
+                                eval_info_id_list = [i for i in range(self.num_envs)]
+                                self.eval_env.reset_agent_by_id()
+                                obs = self.eval_env.get_observation()
+                                while True:
+                                    actions, _ = self.policy.actor(obs)
+                                    clipped_actions = th.clip(
+                                        actions, th.as_tensor(self.action_space.low, device=self.device), th.as_tensor(self.action_space.high, device=self.device)
+                                    )
+                                    obs, reward, done, info = self.eval_env.step(clipped_actions, is_test=True)
+                                    for index in reversed(eval_info_id_list):
+                                        if done[index]:
+                                            eval_info_id_list.remove(index)
+                                            eq_rewards_buffer.append(info[index]["episode"]["r"])
+                                            eq_len_buffer.append(info[index]["episode"]["l"])
+                                            eq_success_buffer.append(info[index]["is_success"])
+                                            eq_info_buffer.append(info[index]["episode"])
+                                    if done.all():
+                                        break
+                        else:
+                            # Skip evaluation if no eval_env, use training env stats instead
+                            print("No eval_env available, skipping evaluation...")
 
-                    if pbar.n - previous_step >= self._dump_step and len(eq_rewards_buffer) > 0:
+                    if pbar.n - previous_step >= self._dump_step:
                         self._logger.record("time/fps", (current_step - previous_step) / (time.time() - previous_time))
-                        self._logger.record("rollout/ep_rew_mean", sum(eq_rewards_buffer) / len(eq_rewards_buffer))
-                        self._logger.record("rollout/ep_len_mean", sum(eq_len_buffer) / len(eq_len_buffer))
-                        self._logger.record("rollout/success_rate", sum(eq_success_buffer) / len(eq_success_buffer))
+                        # Only log evaluation metrics if we have eval data
+                        if len(eq_rewards_buffer) > 0:
+                            self._logger.record("rollout/ep_rew_mean", sum(eq_rewards_buffer) / len(eq_rewards_buffer))
+                            self._logger.record("rollout/ep_len_mean", sum(eq_len_buffer) / len(eq_len_buffer))
+                            self._logger.record("rollout/success_rate", sum(eq_success_buffer) / len(eq_success_buffer))
+                            if len(eq_info_buffer) > 0 and len(eq_info_buffer[0]["extra"]) >= 0:
+                                for key in eq_info_buffer[0]["extra"].keys():
+                                    self.logger.record(
+                                        f"rollout/ep_{key}_mean",
+                                        safe_mean(
+                                            [ep_info["extra"][key] for ep_info in eq_info_buffer]
+                                        ),
+                                    )
                         self._logger.record("train/actor_loss", actor_loss.item())
                         self._logger.record("train/critic_loss", critic_loss.item() if isinstance(critic_loss, th.Tensor) else critic_loss)
-                        if len(eq_info_buffer[0]["extra"]) >= 0:
-                            for key in eq_info_buffer[0]["extra"].keys():
-                                self.logger.record(
-                                    f"rollout/ep_{key}_mean",
-                                    safe_mean(
-                                        [ep_info["extra"][key] for ep_info in eq_info_buffer]
-                                    ),
-                                )
                         self._logger.dump(current_step)
                         previous_time, previous_step = time.time(), current_step
                     pbar.update((inner_step + 1) * self.num_envs)
