@@ -11,7 +11,11 @@ import torch as th
 from habitat_sim import SensorType
 from ...utils.type import ACTION_TYPE, TensorDict
 
-
+sensor_type_alias = {
+    "depth": SensorType.DEPTH,
+    "color": SensorType.COLOR,
+    "semantic": SensorType.SEMANTIC,
+}
 class DroneGymEnvsBase(VecEnv):
     def __init__(
             self,
@@ -39,30 +43,6 @@ class DroneGymEnvsBase(VecEnv):
             warnings.warn("The number of envs is less than 1e3, cpu is faster than gpu. To make training faster, we have set device to cpu.")
         else:
             _env_device = device
-
-        # sensor_kwargs = [{
-        #     "sensor_type": SensorType.DEPTH,
-        #     "uuid": "depth",
-        #     "resolution": [64, 64],
-        # }] if sensor_kwargs is None else sensor_kwargs
-        # random_kwargs = {
-        #     "state_generator":
-        #         {
-        #             "class": "Uniform",
-        #             "kwargs": [
-        #                 {"position": {"mean": [1., 0., 1.5], "half": [0.0, 2., 1.]}},
-        #             ]
-        #         }
-        # } if random_kwargs is None else random_kwargs
-        # dynamics_kwargs = {
-        #     "dt": 0.02,
-        #     "ctrl_dt": 0.02,
-        #     "action_type": "bodyrate",
-        #     "ctrl_delay": True,
-        # } if dynamics_kwargs is None else dynamics_kwargs
-        # scene_kwargs = {
-        #     "path": "VisFly/datasets/visfly-beta/configs/garage_empty"
-        # } if scene_kwargs is None else scene_kwargs
 
         self.envs = DroneEnvsBase(
             num_agent_per_scene=num_agent_per_scene,
@@ -93,19 +73,16 @@ class DroneGymEnvsBase(VecEnv):
         # key interference of gym env
         state_size = 3 + 3+ 3 +(3 if self.envs.dynamics.angular_output_type == "euler" else (4 if self.envs.dynamics.angular_output_type == "quaternion" else 6))
 
-        if not visual:
-            self.observation_space = spaces.Dict(
-                {
-                    "state": spaces.Box(low=-np.inf, high=np.inf, shape=(state_size,), dtype=np.float32)
-                }
-            )
-        else:
-            self.observation_space = spaces.Dict(
-                {
-                    "state": spaces.Box(low=-np.inf, high=np.inf, shape=(state_size,), dtype=np.float32)
-                }
-            )
+        self.observation_space = spaces.Dict(
+            {
+                "state": spaces.Box(low=-np.inf, high=np.inf, shape=(state_size,), dtype=np.float32)
+            }
+        )
+        if visual:
             for sensor_setting in self.envs.sceneManager.sensor_settings:
+                if isinstance(sensor_setting["sensor_type"], str):
+                    sensor_setting["sensor_type"] = sensor_type_alias[(sensor_setting["sensor_type"]).lower()]
+
                 if sensor_setting["sensor_type"] == SensorType.DEPTH:
                     max_depth = np.inf
                     self.observation_space.spaces[sensor_setting["uuid"]] = spaces.Box(
@@ -297,6 +274,7 @@ class DroneGymEnvsBase(VecEnv):
 
         if isinstance(self.get_reward(), dict):
             self._indiv_reward: dict = self.get_reward()
+            self._indiv_rewards: dict = self._indiv_reward
             self._indiv_rewards = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
             self._indiv_reward = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
         elif isinstance(self.get_reward(), th.Tensor):
@@ -396,7 +374,7 @@ class DroneGymEnvsBase(VecEnv):
         indices = range(self.num_agent) if indices is None else indices
         for indice in indices:
             self._info[indice] = {
-                "TimeLimit.truncated": False,
+                "TimeLimit.truncated": False, "episode_done": False,
             }
 
     # def stack(self):
@@ -598,3 +576,16 @@ class DroneGymEnvsBase(VecEnv):
 
     def __len__(self):
         return self.num_envs
+
+    # brief description of the class
+    def __repr__(self):
+        return f"{self.__class__.__name__}(Env={self.envs.__class__},\
+        NumAgentPerScene={self.num_agent_per_scene}, NumScene={self.num_scene}, \
+        tensorOut={self.tensor_output}, RequiresGrad={self.requires_grad})"
+
+    def set_requires_grad(self, requires_grad: bool):
+        """
+        Set whether the environment requires gradient computation.
+        :param requires_grad: (bool) Whether to require gradients
+        """
+        self.requires_grad = requires_grad

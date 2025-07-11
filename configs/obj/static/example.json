@@ -35,7 +35,7 @@
       "velocity": {
         "class": "Uniform",
         "kwargs": {
-          "mean": 3,
+          "mean": 0,
           "half": 0.0
         }
       },
@@ -44,7 +44,7 @@
         "class": "circle",
         "comment": "assert in circle, polygon, rrt",
         "kwargs": {
-          "radius": 1,
+          "radius": 0.001,
           "center": [
             10,
             0,

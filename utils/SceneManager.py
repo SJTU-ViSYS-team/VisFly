@@ -104,7 +104,7 @@ def calc_camera_transform(
 class SceneManager(ABC):
     def __init__(
             self,
-            path: str = "VisFly/datasets/visfly-beta/configs/garage_empty",
+            path: str = "VisFly/datasets/visfly-beta/configs/scenes/garage_empty",
             scene_type: str = "json",
             num_scene: int = 1,
             num_agent_per_scene: Union[int, List[int]] = 1,
@@ -159,9 +159,9 @@ class SceneManager(ABC):
         self._scene_loader = _dataLoader
 
         if obj_settings:
-            obj_path = self.obj_settings.get("path", None)
+            obj_path = self.obj_settings.get("path", "static")
             _objLoader = SimpleDataLoader(
-                ChildrenPathDataset(f"VisFly/configs/{obj_path}", type='obj', semantic=False), batch_size=num_scene, shuffle=True
+                ChildrenPathDataset(f"VisFly/configs/obj/{obj_path}", type='obj', semantic=False), batch_size=num_scene, shuffle=True
             )
             self._obj_loader = _objLoader
         self.dynamic_object_position = [[None] for _ in range(num_agent_per_scene*num_scene)]
@@ -225,6 +225,9 @@ class SceneManager(ABC):
         elif "visfly" in parts[index].lower():
             self.datasets_name = "visfly-beta"
             self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
+        elif "spy" in parts[index].lower():
+            self.datasets_name = "spy_datasets"
+            self._datasets_path = root_addr + "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
         elif "hssd" in parts[index].lower():
             self.datasets_name = "hssd-hab"
             self._datasets_path = root_addr + "datasets/hssd-hab/hssd-hab.scene_dataset_config.json"

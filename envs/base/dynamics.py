@@ -120,7 +120,7 @@ class Dynamics:
         self._quad_drag_coeffs = self._quad_drag_coeffs_mean
 
     def detach(self):
-        self._position = self._position.clone().detach()  # 将self._position属性进行clone()操作，然后detach()分离，赋值给self._position
+        self._position = self._position.clone().detach()
         self._orientation = self._orientation.clone().detach()
         self._velocity = self._velocity.clone().detach()
         self._angular_velocity = self._angular_velocity.clone().detach()
@@ -128,6 +128,7 @@ class Dynamics:
         self._thrusts = self._thrusts.clone().detach()
         self._angular_acc = self._angular_acc.clone().detach()
         self._acc = self._acc.clone().detach()
+        self._t = self._t.clone().detach()
         self._pre_action = [
             pre_act.clone().detach() for pre_act in self._pre_action
         ]
@@ -177,7 +178,7 @@ class Dynamics:
             self._thrusts = th.ones((4, self.num), device=self.device) * self._init_thrust if thrusts is None else thrusts.T
             self._motor_omega = th.ones((4, self.num), device=self.device) * self._init_motor_omega if motor_omega is None else motor_omega.T
             self._t = th.zeros((self.num,), device=self.device) if t is None else t
-            self._t = th.zeros((self.num,), device=self.device) + th.rand((self.num), device=self.device)*3.14*2 if t is None else t
+            # self._t = th.zeros((self.num,), device=self.device) + th.rand((self.num), device=self.device)*3.14*2 if t is None else t
             # self._ctrl_i = th.zeros((3, self.num), device=self.device)
             self._angular_acc = th.zeros((3, self.num), device=self.device)
             self._acc = th.zeros((3, self.num), device=self.device)

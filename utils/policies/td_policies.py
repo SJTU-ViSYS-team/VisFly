@@ -129,7 +129,7 @@ class ContinuousCritic(NormalContinuousCritic):
                 features, h = self.extract_features(obs, self.features_extractor)
             else:
                 features, h = self.extract_features(obs, self.features_extractor), None
-        qvalue_input = th.cat([features, actions], dim=1)
+        qvalue_input = th.cat([features, actions], dim=-1)
         return tuple(q_net(qvalue_input) for q_net in self.q_networks)
 
     def q1_forward(self, obs: th.Tensor, actions: th.Tensor) -> th.Tensor:
@@ -337,6 +337,9 @@ class MTDPolicy(SACPolicy):
             n_critics=n_critics,
             share_features_extractor=share_features_extractor,
         )
+
+        self.actor_target = copy.deepcopy(self.actor)
+
 
     def _build(self, lr_schedule: Schedule) -> None:
         super()._build(lr_schedule)

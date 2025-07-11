@@ -37,7 +37,7 @@ sensor_kwargs = [{
 scene_kwargs = {
     "path": scene_path,
     "obj_settings": {
-        "path": "obj",
+        "path": "static",
     },
     "render_settings": {
         "mode": "fix",

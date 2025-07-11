@@ -1,15 +1,34 @@
 from abc import abstractmethod
 
+import gym
 import torch as th
 import torch.nn as nn
 import numpy as np
 from typing import Tuple, Callable, Any
 from gym import spaces
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, CombinedExtractor
 from typing import List, Optional, Type, Union, Dict
 
 from torch import Tensor
 from torchvision import models
+
+
+class BaseFeaturesExtractor(nn.Module):
+    """
+    Base class that represents a features extractor.
+
+    :param observation_space:
+    :param features_dim: Number of features extracted.
+    """
+
+    def __init__(self, observation_space: gym.Space, features_dim: int = 0) -> None:
+        super().__init__()
+        assert features_dim > 0
+        self._observation_space = observation_space
+        self._features_dim = features_dim
+
+    @property
+    def features_dim(self) -> int:
+        return self._features_dim
 
 
 class CustomBaseFeaturesExtractor(BaseFeaturesExtractor):
@@ -38,9 +57,22 @@ class CustomBaseFeaturesExtractor(BaseFeaturesExtractor):
             self._features_dim = _hidden_features_dim
             self._is_recurrent = True
 
-    @abstractmethod
     def extract(self, observations) -> th.Tensor:
-        pass
+        features = []
+        for name in self._extract_names:
+            is_exceed_dim = (len(observations[name].shape) > 4) and \
+                name in ["semantic", "color", "depth"]
+            if is_exceed_dim:
+                obs = observations[name].reshape(-1, *observations[name].shape[-3:])
+            else:
+                obs = observations[name]
+            x = getattr(self, name + "_extractor")(obs)
+            if is_exceed_dim:
+                x = x.reshape(*observations[name].shape[:-3], x.shape[-1])
+            features.append(x)
+        combined_features = th.cat(features, dim=-1)
+
+        return combined_features
 
     def extract_with_recurrent(self, observations):
         features = self.extract(observations)
@@ -524,9 +556,6 @@ class TargetExtractor(CustomBaseFeaturesExtractor):
         )
         self._features_dim = feature_dim
 
-    def extract(self, observations) -> th.Tensor:
-        return self.target_extractor(observations['target'])
-
 
 class StateExtractor(CustomBaseFeaturesExtractor):
     def __init__(
@@ -543,9 +572,6 @@ class StateExtractor(CustomBaseFeaturesExtractor):
     def _build(self, observation_space, net_arch, activation_fn):
         feature_dim = set_mlp_feature_extractor(self, "state", observation_space["state"], net_arch["state"], activation_fn)
         self._features_dim = feature_dim
-
-    def extract(self, observations) -> th.Tensor:
-        return self.state_extractor(observations['state'])
 
 
 class ImageExtractor(CustomBaseFeaturesExtractor):
@@ -583,15 +609,6 @@ class ImageExtractor(CustomBaseFeaturesExtractor):
                 )
         self._features_dim = sum(_image_features_dims)
 
-    def extract(self, observations) -> th.Tensor:
-        features = []
-        for name in self._extract_names:
-            x = getattr(self, name + "_extractor")(observations[name])
-            features.append(x)
-        combined_features = th.cat(features, dim=1)
-
-        return combined_features
-
 
 class StateTargetExtractor(CustomBaseFeaturesExtractor):
     def __init__(self,
@@ -611,9 +628,6 @@ class StateTargetExtractor(CustomBaseFeaturesExtractor):
 
         self._features_dim = state_features_dim + target_features_dim
 
-    def extract(self, observations):
-        return th.cat([self.state_extractor(observations["state"]), self.target_extractor(observations["target"])], dim=1)
-
 
 class StateImageExtractor(ImageExtractor):
     def __init__(self,
@@ -631,13 +645,6 @@ class StateImageExtractor(ImageExtractor):
         super()._build(observation_space, net_arch, activation_fn)
         _state_features_dim = set_mlp_feature_extractor(self, "state", observation_space["state"], net_arch.get("state", {}), activation_fn)
         self._features_dim = _state_features_dim + self._features_dim
-
-    def extract(self, observations) -> th.Tensor:
-        state_features = self.state_extractor(observations['state'])
-        features = [state_features]
-        image_features = super().extract(observations)
-        features.append(image_features)
-        return th.cat(features, dim=1)
 
 
 class StateTargetImageExtractor(ImageExtractor):
@@ -666,24 +673,6 @@ class StateTargetImageExtractor(ImageExtractor):
         else:
             self._features_dim = _state_features_dim + _target_features_dim
 
-    def extract(self, observation):
-        state_features = self.state_extractor(observation['state'])
-        target_features = self.target_extractor(observation['target'])
-        
-        # Extract only image features, not all features in _extract_names
-        image_features = []
-        for name in self._extract_names:
-            if "semantic" in name or "color" in name or "depth" in name:
-                x = getattr(self, name + "_extractor")(observation[name])
-                image_features.append(x)
-        
-        if image_features:
-            combined_image_features = th.cat(image_features, dim=1)
-            return th.cat([state_features, target_features, combined_image_features], dim=1)
-        else:
-            # No image features found - just return state and target features
-            return th.cat([state_features, target_features], dim=1)
-
 
 class SwarmStateTargetImageExtractor(StateTargetImageExtractor):
     def __init__(self,
@@ -710,14 +699,6 @@ class SwarmStateTargetImageExtractor(StateTargetImageExtractor):
                               observation_space["swarm"].shape[0]
         self._features_dim = self._features_dim + _swarm_features_dim
 
-    def extract(self, observation):
-        swarm_features = []
-        for i in range(observation["swarm"].shape[0]):
-            swarm_features.append(self.swarm_extractor(observation["swarm"][i]))
-        swarm_features = th.cat(swarm_features, dim=1)
-        father_features = super().extract(observation)
-        return th.cat([father_features, swarm_features], dim=1)
-
 
 class StateGateExtractor(StateExtractor):
     def __init__(self, observation_space: spaces.Dict,
@@ -730,24 +711,16 @@ class StateGateExtractor(StateExtractor):
         gate_feature_dim = set_mlp_feature_extractor(self, "gate", observation_space["gate"], net_arch["gate"], activation_fn)
         self._features_dim = self._features_dim + gate_feature_dim
 
-    def extract(self, observations) -> th.Tensor:
-        state_features = self.state_extractor(observations['state'])
-        gate_features = self.gate_extractor(observations['gate'])
-        return th.cat([state_features, gate_features], dim=1)
-
 
 class EmptyExtractor(CustomBaseFeaturesExtractor):
     def __init__(self, observation_space: spaces.Dict,
                  net_arch: Optional[Dict] = {},
                  activation_fn: Type[nn.Module] = nn.ReLU, ):
         super(EmptyExtractor, self).__init__(observation_space=observation_space, net_arch=net_arch, activation_fn=activation_fn)
-        self._features_dim = observation_space.shape[0]
+        # self._features_dim = observation_space.shape[0]
 
     def _build(self, observation_space, net_arch, activation_fn):
         pass
-
-    def extract(self, observations) -> th.Tensor:
-        return observations
 
 
 class LatentCombineExtractor(nn.Module):
@@ -775,6 +748,7 @@ class LatentCombineExtractor(nn.Module):
 
     def forward(self, x):
         return self.extract(x)
+
 
 class FlexibleMLP(nn.Module):
     extractor_alias: Dict = {
@@ -826,3 +800,23 @@ class FlexibleMLP(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
+
+def load_extractor_class(cls):
+    cls_alias = {
+        "StateExtractor": StateExtractor,
+        "ImageExtractor": ImageExtractor,
+        "TargetExtractor": TargetExtractor,
+        "StateTargetExtractor": StateTargetExtractor,
+        "StateImageExtractor": StateImageExtractor,
+        "StateTargetImageExtractor": StateTargetImageExtractor,
+        "SwarmStateTargetImageExtractor": SwarmStateTargetImageExtractor,
+        "StateGateExtractor": StateGateExtractor,
+        "EmptyExtractor": EmptyExtractor,
+        "LatentCombineExtractor": LatentCombineExtractor,
+    }
+    if cls in cls_alias.keys():
+        return cls_alias[cls]
+    else:
+        raise ValueError(f"Extractor class {cls} not found in alias. Available classes: {list(cls_alias.keys())}")
+

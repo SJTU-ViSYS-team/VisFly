@@ -135,14 +135,16 @@ class SceneGenerator:
         self.light_root_path = os.path.join(path, "configs/lights")
         self.stage_root_path = os.path.join(path, "configs/stages")
         self.navmesh_root_path = os.path.join(path, "navmeshes")
-        self.save_path = os.path.join(path, f"configs/scenes/{self.setting.stage}_{name}")
+
+        self.name = f"{self.setting.stage}_{name}"
+        self.save_path = os.path.join(path, f"configs/scenes/{self.name}")
 
         self.objects_path = self._get_all_chirldren_path(self.object_root_path)
         self.lights_path = self._get_all_chirldren_path(self.light_root_path)
         self.stages_path = self._get_all_chirldren_path(self.stage_root_path)
         self.navmesh_path = self._get_all_chirldren_path(self.navmesh_root_path)
 
-        self._write_scene_dir_in_summary(f"{self.setting.stage}_{name}")
+        self._write_scene_dir_in_summary(self.name)
 
     def generate(self):
         return self._create_scene_json()
@@ -472,7 +474,7 @@ if __name__ == "__main__":
     elif args.scene == "box10_wall":
         object_margin = np.array([[3,0,0],[3,0,8]])
     elif args.scene == "box15_wall":
-        object_margin = np.array([[3, 0, 0], [3, 0, 8]])
+        object_margin = np.array([[2, 0, 0], [22, 0, 8]])
     g = SceneGenerator(
         path="datasets/visfly-beta",
         num=args.quantity,
