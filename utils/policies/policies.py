@@ -14,6 +14,7 @@ from torchvision import models
 from .extractors import create_mlp
 from stable_baselines3.common.policies import MlpExtractor
 from stable_baselines3.common.distributions import *
+from stable_baselines3.common.utils import get_device
 
 class MlpExtractor2(MlpExtractor):
     def __init__(
@@ -24,6 +25,7 @@ class MlpExtractor2(MlpExtractor):
             activation_fn: Type[nn.Module] = nn.ReLU,
             device: th.device = th.device("cpu"),
     ):
+        # Simplified approach matching old_VisFly - call parent but don't overthink it
         super().__init__(
             feature_dim=pi_features_dim,
             net_arch=net_arch,
@@ -31,22 +33,38 @@ class MlpExtractor2(MlpExtractor):
             device=device
         )
 
-        self.policy_net, _ = create_mlp(
+        # Create custom MLP networks (matching old_VisFly approach)
+        self.policy_net = create_mlp(
             input_dim=pi_features_dim,
             layer=net_arch["pi"],
             activation_fn=activation_fn,
-            bn=net_arch.get("pi_bn", False),
-            ln=net_arch.get("pi_ln", False),
+            batch_norm=net_arch.get("pi_bn", False),
+            layer_norm=net_arch.get("pi_ln", False),
             squash_output=net_arch.get("squash_output", False)
         )
-        self.value_net,_ = create_mlp(
+        self.value_net = create_mlp(
             input_dim=vf_features_dim,
             layer=net_arch["vf"],
             activation_fn=activation_fn,
-            bn=net_arch.get("vf_bn", False),
-            ln=net_arch.get("vf_ln", False),
+            batch_norm=net_arch.get("vf_bn", False),
+            layer_norm=net_arch.get("vf_ln", False),
             squash_output=net_arch.get("squash_output", False)
         )
+    
+    def forward(self, features: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
+        """
+        Forward pass in all the networks (policy and value)
+        
+        :param features: Features from the features extractor
+        :return: latent_policy, latent_value of the specified network.
+        """
+        return self.forward_actor(features), self.forward_critic(features)
+    
+    def forward_actor(self, features: th.Tensor) -> th.Tensor:
+        return self.policy_net(features)
+    
+    def forward_critic(self, features: th.Tensor) -> th.Tensor:
+        return self.value_net(features)
 
 
 from .extractors import *
@@ -109,7 +127,7 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
             log_std_init: float = 0.0,
             full_std: bool = True,
             use_expln: bool = False,
-            squash_output: bool = True,
+            squash_output: bool = False,  # Fix: Match old_VisFly default (False)
             features_extractor_class: Type[BaseFeaturesExtractor] = None,
             features_extractor_kwargs: Optional[Dict[str, Any]] = None,
             pi_features_extractor_class: Type[BaseFeaturesExtractor] = None,
@@ -146,7 +164,7 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
             log_std_init=log_std_init,
             full_std=full_std,
             use_expln=use_expln,
-            squash_output=False,
+            squash_output=squash_output,  # Fix: Use actual parameter instead of hardcoded False
             features_extractor_class=features_extractor_class,
             features_extractor_kwargs=features_extractor_kwargs,
             share_features_extractor=share_features_extractor,
@@ -174,6 +192,7 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
 
         self._squash_output = squash_output
         self._build(lr_schedule)
+        
         if isinstance(self.action_dist, DiagGaussianDistribution):
             if self.squash_output:
                 self.action_dist = SquashedDiagGaussianDistribution(get_action_dim(self.action_space))
@@ -314,23 +333,7 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
         """
         mean_actions = self.action_net(latent_pi)
 
-        if isinstance(self.action_dist, DiagGaussianDistribution):
-            return self.action_dist.proba_distribution(mean_actions, self.log_std)
-        elif isinstance(self.action_dist, SquashedDiagGaussianDistribution):
-            return self.action_dist.proba_distribution(mean_actions, self.log_std)
-        elif isinstance(self.action_dist, CategoricalDistribution):
-            # Here mean_actions are the logits before the softmax
-            return self.action_dist.proba_distribution(action_logits=mean_actions)
-        elif isinstance(self.action_dist, MultiCategoricalDistribution):
-            # Here mean_actions are the flattened logits
-            return self.action_dist.proba_distribution(action_logits=mean_actions)
-        elif isinstance(self.action_dist, BernoulliDistribution):
-            # Here mean_actions are the logits (before rounding to get the binary actions)
-            return self.action_dist.proba_distribution(action_logits=mean_actions)
-        elif isinstance(self.action_dist, StateDependentNoiseDistribution):
-            return self.action_dist.proba_distribution(mean_actions, self.log_std, latent_pi)
-        else:
-            raise ValueError("Invalid action distribution")
+        return self.action_dist.proba_distribution(mean_actions, self.log_std)
 
 def debug():
     test = 1

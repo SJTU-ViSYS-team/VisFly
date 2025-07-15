@@ -22,7 +22,7 @@ random_kwargs = {
 
 # Try to use a simpler scene or disable visual if scene loading fails
 try:
-    scene_path = "VisFly/datasets/spy_datasets/configs/garage_empty"
+    scene_path = "VisFly/datasets/visfly-beta/configs/garage_empty"
     sensor_kwargs = [{
                 "sensor_type": SensorType.COLOR,
                 "uuid": "depth",

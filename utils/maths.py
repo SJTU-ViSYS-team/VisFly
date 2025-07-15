@@ -71,8 +71,8 @@ class Quaternion:
     @property
     def xz_axis(self):
         return th.stack([
-            1 - 2 * (self.y.pow(2) + self.z.pow(2)), 2 * (self.x * self.y - self.z * self.w), 2 * (self.x * self.z + self.y * self.w),
-            2 * (self.x * self.z - self.y * self.w), 2 * (self.y * self.z + self.x * self.w), 1 - 2 * (self.x.pow(2) + self.y.pow(2))
+            th.stack([1 - 2 * (self.y.pow(2) + self.z.pow(2)), 2 * (self.x * self.y - self.z * self.w), 2 * (self.x * self.z + self.y * self.w)]),
+            th.stack([2 * (self.x * self.z + self.y * self.w), 2 * (self.y * self.z - self.x * self.w), 1 - 2 * (self.x.pow(2) + self.y.pow(2))])
         ])
 
     @property
@@ -177,6 +177,7 @@ class Quaternion:
 
     @staticmethod
     def from_euler(roll, pitch, yaw, order="zyx"):
+        roll, pitch, yaw = th.as_tensor(roll), th.as_tensor(pitch), th.as_tensor(yaw)
         if order == "zyx":
             cy = th.cos(yaw * 0.5)
             sy = th.sin(yaw * 0.5)

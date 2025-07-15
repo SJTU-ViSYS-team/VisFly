@@ -1,7 +1,7 @@
 .vscode/
 .idea/
-
 ！debug/*.py
+
 datasets/*
 !datasets/.gitkeep
 # 忽略所有 Python 缓存文件

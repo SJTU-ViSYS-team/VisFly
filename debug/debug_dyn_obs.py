@@ -11,21 +11,27 @@ import numpy as np
 from habitat_sim.sensor import SensorType
 from VisFly.utils.maths import Quaternion
 from VisFly.envs.DynamicEnv import DynEnv
+from VisFly.utils.test.mesh_plot import plot_rectangle_mesh, plot_triangle_mesh
 
 random_kwargs = {
     "state_generator":
         {
-            "class": "Uniform",
+            # "class": "Uniform",
+            "class": "TargetUniform",
             "kwargs": [
-                {"position": {"mean": [1., 0., 1.5], "half": [0.0, 0.0, 0.3]}},
+                {"position": {"mean": [10., 0., 1.5], "half": [1.0, 1.0, 0.3]}},
             ]
         }
 }
-scene_path = "VisFly/datasets/spy_datasets/configs/garage_pillar"
+
+scene_path = "VisFly/datasets/visfly-beta/configs/scenes/box10_empty"
+scene_path = "VisFly/datasets/visfly-beta/configs/scenes/box10_wall"
+scene_path = "VisFly/datasets/visfly-beta/configs/scenes/box15_wall_pillar"
+# scene_path = "VisFly/datasets/visfly-beta/configs/scenes/garage_simple_l_long"
 sensor_kwargs = [{
-    "sensor_type": SensorType.COLOR,
+    "sensor_type": SensorType.DEPTH,
     "uuid": "depth",
-    "resolution": [128, 128],
+    "resolution": [64, 64],
     "position": [0, 0.2, 0.],
 }]
 scene_kwargs = {
@@ -38,7 +44,8 @@ scene_kwargs = {
         "view": "custom",
         "resolution": [1080, 1920],
         # "position": th.tensor([[-2., 0, 3.5], [2, 0, 2.5]]),
-        "position": th.tensor([[7., 6.8, 5.5], [7, 4.8, 4.5]]),
+        # "position": th.tensor([[7., 6.8, 5.5], [7, 4.8, 4.5]]),
+        "position": th.tensor([[3., 0, 5.5], [7, 0, 4.5]]),
         "line_width": 6.,
 
         # "point": th.tensor([[9., 0, 1], [1, 0, 1]]),
@@ -47,10 +54,11 @@ scene_kwargs = {
 
     }
 }
-num_agent = 1
+num_agent = 4
+num_scene = 1  # 4 agents in each scene
 env = DynEnv(
     visual=True,
-    num_scene=1,
+    num_scene=num_scene,
     num_agent_per_scene=num_agent,
     random_kwargs=random_kwargs,
     scene_kwargs=scene_kwargs,
@@ -63,7 +71,8 @@ env.reset()
 
 t = 0
 while True:
-    a = th.rand((num_agent, 4))*1
+    # a = th.rand((num_agent*num_scene, 4))
+    a = th.zeros((num_agent * num_scene, 4)) + th.tensor([-0.2, 0, 0, 0])
     env.step(a)
     # circile position
     # position = th.tensor([[3., 0, 1]]) + th.tensor([[np.cos(t/10), np.sin(t/10), 0]]) * 2
@@ -75,7 +84,10 @@ while True:
     obs = env.sensor_obs["depth"]
     cv.imshow("img", cv.cvtColor(img[0], cv.COLOR_RGBA2BGRA))
     # cv.imshow("obs", np.transpose(obs[0], (1, 2, 0)))
-    cv.imshow("obs", cv.cvtColor(obs[0][0], cv.COLOR_RGBA2BGRA))
-    print(env.envs.dynamic_object_position)
+    drone_obs = np.hstack([i[0] for i in obs[:num_agent]])/5
+    cv.imshow("obs", cv.cvtColor(drone_obs, cv.COLOR_RGBA2BGRA))
+    # print(env.envs.dynamic_object_position)
+    # plot_triangle_mesh(env.envs.sceneManager.scenes[0].object_mesh.vertices, faces=env.envs.sceneManager.scenes[0].object_mesh.faces)
+    # plot_triangle_mesh(env.envs.sceneManager.scenes[0].scene_mesh.vertices, faces=env.envs.sceneManager.scenes[0].scene_mesh.faces)
     cv.waitKey(100)
     t += 1

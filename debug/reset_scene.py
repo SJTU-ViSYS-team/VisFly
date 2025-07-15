@@ -1,21 +1,37 @@
-from VisFly.envs.NavigationEnv import NavigationEnv2
-import cv2 as cv
-import torch as th
-import time
-import numpy as np
-from habitat_sim.sensor import SensorType
-from VisFly.utils.maths import Quaternion
+#!/usr/bin/env python3
 
-random_kwargs = {
-    "state_generator":
-        {
+import sys
+import os
+import torch as th
+import numpy as np
+
+# Add the correct path to import VisFly modules
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+from VisFly.envs.NavigationEnv import NavigationEnv2
+from habitat_sim.sensor import SensorType
+
+def test_scene_reset():
+    """Test scene reset functionality"""
+    print("=== Testing Scene Reset Functionality ===")
+    
+    # Configuration
+    scene_path = "../datasets/spy_datasets/configs/garage_simple_l_medium"
+    sensor_kwargs = [{
+        "sensor_type": SensorType.DEPTH,
+        "uuid": "depth",
+        "resolution": [64, 64],
+    }]
+    
+    random_kwargs = {
+        "state_generator": {
             "class": "Uniform",
             "kwargs": [
                 {"position": {"mean": [1., 0., 1.5], "half": [2.0, 2.0, 1.0]}},
             ]
         }
 }
-scene_path = "VisFly/datasets/spy_datasets/configs/garage_empty"
+scene_path = "VisFly/datasets/visfly-beta/configs/garage_empty"
 sensor_kwargs = [{
             "sensor_type": SensorType.COLOR,
             "uuid": "depth",

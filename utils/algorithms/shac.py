@@ -343,7 +343,7 @@ class TemporalDifferBase:
 
     # @staticmethod
     def load(self, path: Optional[str]):
-        path += ".pth" if not path.endswith(".pth") else path
+        path = path + ".pth" if not path.endswith(".pth") else path
         self.policy = th.load(path).to(self.policy.device)
         return self
 

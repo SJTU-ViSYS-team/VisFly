@@ -17,6 +17,7 @@ import quaternion
 import magnum as mn
 from .common import *
 from abc import ABC
+from .test.mesh_plot import plot_triangle_mesh, plot_rectangle_mesh
 
 DEBUG = False
 
@@ -103,7 +104,7 @@ def calc_camera_transform(
 class SceneManager(ABC):
     def __init__(
             self,
-            path: str = "VisFly/datasets/spy_datasets/configs/garage_empty",
+            path: str = "VisFly/datasets/visfly-beta/configs/garage_empty",
             scene_type: str = "json",
             num_scene: int = 1,
             num_agent_per_scene: Union[int, List[int]] = 1,
@@ -163,6 +164,7 @@ class SceneManager(ABC):
                 ChildrenPathDataset(f"VisFly/configs/{obj_path}", type='obj', semantic=False), batch_size=num_scene, shuffle=True
             )
             self._obj_loader = _objLoader
+        self.dynamic_object_position = [[None] for _ in range(num_agent_per_scene*num_scene)]
 
         self.scenes: List[habitat_sim.scene] = [None for _ in range(num_scene)]
         self.agents: List[List[habitat_sim.agent]] = [[] for _ in range(num_scene)]
@@ -216,19 +218,19 @@ class SceneManager(ABC):
         index = parts.index("datasets") + 1
         root_addr = os.path.dirname(__file__) + "/../"
         self.datasets = parts[index]
-        self._drone_path = [root_addr + "datasets/spy_datasets/configs/agents/DJI_Mavic_" + c + ".object_config.json" for c in ["red", "green", "blue", "orange"]]
+        self._drone_path = [root_addr + "datasets/visfly-beta/configs/agents/DJI_Mavic_" + c + ".object_config.json" for c in ["red", "green", "blue", "orange"]]
         if "hm3d" in parts[index].lower():
             self.datasets_name = "hm3d"
-            self._datasets_path = root_addr + "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
-        elif "spy" in parts[index].lower():
-            self.datasets_name = "spy_datasets"
-            self._datasets_path = root_addr + "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+            self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
+        elif "visfly" in parts[index].lower():
+            self.datasets_name = "visfly-beta"
+            self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
         elif "hssd" in parts[index].lower():
             self.datasets_name = "hssd-hab"
             self._datasets_path = root_addr + "datasets/hssd-hab/hssd-hab.scene_dataset_config.json"
         elif "mp3d" in parts[index].lower():
             self.datasets_name = "mp3d"
-            self._datasets_path = root_addr + "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
+            self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
         else:
             raise ValueError("datasets name is not supported")
 
@@ -317,17 +319,17 @@ class SceneManager(ABC):
                                                            np.hstack([hab_pos[drone_id], hab_ori[drone_id]])
                                                            )
                 drone_id += 1
-                if self.is_multi_drone:
+                if self.is_multi_drone or self.render_settings:
                     self._drones[scene_id][agent_id].root_scene_node.transformation = \
                         self.agents[scene_id][agent_id].scene_node.transformation
         self._update_collision_infos()
 
-        if self._obj_mgrs is not None:
-            # set the pose of objects or agents in the scene
-            for scene_id in range(self.num_scene):
-                for agent_id in range(self.num_agent_per_scene):
-                    self._drones[scene_id][agent_id].root_scene_node.transformation = \
-                        self.agents[scene_id][agent_id].scene_node.transformation
+        # if hasattr(self, "_drone"):
+        #     # set the pose of objects or agents in the scene
+        #     for scene_id in range(self.num_scene):
+        #         for agent_id in range(self.num_agent_per_scene):
+        #             self._drones[scene_id][agent_id].root_scene_node.transformation = \
+        #                 self.agents[scene_id][agent_id].scene_node.transformation
 
     def get_observation(self, indices: Optional[int] = None):
         """_summary_
@@ -354,8 +356,10 @@ class SceneManager(ABC):
             self._object_step()
 
     def _object_step(self):
-        for obj_ctrl in self._obj_ctrls:
-            obj_ctrl.step()
+        for i in range(self.num_scene):
+            self._obj_ctrls[i].step()
+            self.scenes[i].update_dynamic_KDtree()
+        self._update_dynamics()
 
     def _update_collision_infos(self, indices: Optional[List] = None, sensitive_radius: float = None):
         """_summary_test
@@ -752,16 +756,21 @@ class SceneManager(ABC):
                 #     )
 
             if self.obj_settings:
+                debug_p = self._obj_loader.next(1)[0]
+                print(debug_p)
                 self._obj_ctrls[scene_id] = \
                     ObjectManager(
                         obj_mgr=self._obj_mgrs[scene_id],
                         # scene_node=self.scenes[scene_id].SceneNode,
                         # scene_node=self.agents[scene_id][0].scene_node,
                         dt=self.obj_settings["dt"],
-                        path=self._obj_loader.next(1)[0]
+                        path=debug_p
                     )
 
-            # self.scenes[scene_id].update_KDtree()
+                self.scenes[scene_id].update_dynamic_KDtree()
+
+        if self._obj_ctrls[0]:
+            self._update_dynamics()
 
     def _load_scene(self, scene_path) -> habitat_sim.Simulator:
         """_summary_
@@ -919,10 +928,12 @@ class SceneManager(ABC):
     def collision_point(self):
         return self._collision_point
 
-    @property
-    def dynamic_object_position(self):
-        if self.obj_settings:
-            return [ctrl.position for ctrl in self._obj_ctrls]
-        else:
-            return None
+    def _update_dynamics(self):
+        self.dynamic_object_position = [obj_ctrl.position for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
+    # @property
+    # def dynamic_object_position(self):
+    #     if self.obj_settings:
+    #         return [obj_ctrl.position for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
+    #     else:
+    #         return None
 

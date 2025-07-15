@@ -154,6 +154,28 @@ class Dynamics:
         self._VELOCITY_PID = self._VELOCITY_PID.to(device)
         self._POSITION_PID = self._POSITION_PID.to(device)
 
+        # Move state tensors to the correct device if they exist
+        if hasattr(self, '_position') and isinstance(self._position, th.Tensor):
+            self._position = self._position.to(device)
+        if hasattr(self, '_velocity') and isinstance(self._velocity, th.Tensor):
+            self._velocity = self._velocity.to(device)
+        if hasattr(self, '_angular_velocity') and isinstance(self._angular_velocity, th.Tensor):
+            self._angular_velocity = self._angular_velocity.to(device)
+        if hasattr(self, '_t') and isinstance(self._t, th.Tensor):
+            self._t = self._t.to(device)
+        if hasattr(self, '_angular_acc') and isinstance(self._angular_acc, th.Tensor):
+            self._angular_acc = self._angular_acc.to(device)
+        if hasattr(self, '_acc') and isinstance(self._acc, th.Tensor):
+            self._acc = self._acc.to(device)
+        if hasattr(self, '_motor_omega') and isinstance(self._motor_omega, th.Tensor):
+            self._motor_omega = self._motor_omega.to(device)
+        if hasattr(self, '_thrusts') and isinstance(self._thrusts, th.Tensor):
+            self._thrusts = self._thrusts.to(device)
+        if hasattr(self, '_orientation') and hasattr(self._orientation, 'to'):
+            self._orientation = self._orientation.to(device)
+        if hasattr(self, '_pre_action') and isinstance(self._pre_action, list):
+            self._pre_action = [action.to(device) if isinstance(action, th.Tensor) else action for action in self._pre_action]
+
         global z, g
         z = z.to(device)
         g = g.to(device)
@@ -182,10 +204,12 @@ class Dynamics:
             self._angular_acc = th.zeros((3, self.num), device=self.device)
             self._acc = th.zeros((3, self.num), device=self.device)
             self._pre_action = [th.zeros(4, self.num) for _ in range(self._comm_delay_steps)]
+            # domain randomization: apply drag noise to entire coefficient tensors
             if self._drag_random:
-                self._linear_drag_coeffs = self._linear_drag_coeffs_mean * (((th.rand_like(self._linear_drag_coeffs_mean)-0.5)*2*self._drag_random).clamp(-0.5, .5) + 1)
-                self._quad_drag_coeffs = self._quad_drag_coeffs_mean * (((th.rand_like(self._quad_drag_coeffs_mean)-0.5)*2*self._drag_random).clamp(-0.5, .5) + 1)
-
+                noise_lin = ((th.rand_like(self._linear_drag_coeffs_mean) - 0.5) * 2 * self._drag_random).clamp(-0.5, 0.5) + 1
+                noise_quad = ((th.rand_like(self._quad_drag_coeffs_mean) - 0.5) * 2 * self._drag_random).clamp(-0.5, 0.5) + 1
+                self._linear_drag_coeffs = self._linear_drag_coeffs_mean * noise_lin
+                self._quad_drag_coeffs = self._quad_drag_coeffs_mean * noise_quad
         else:
             self._position[:, indices] = th.zeros((3, len(indices)), device=self.device) if pos is None else pos.T
             self._orientation[indices] = Quaternion(num=len(indices), device=self.device) if ori is None else Quaternion(*ori.T)
@@ -200,10 +224,12 @@ class Dynamics:
             self._acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
             for i in range(self._comm_delay_steps):
                 self._pre_action[i][:, indices] = self._pre_action[i][:, indices] * 0
-            
+            # domain randomization: apply drag noise to entire coefficient tensors
             if self._drag_random:
-                self._linear_drag_coeffs[:, indices] = self._linear_drag_coeffs_mean * (((th.rand_like(self._linear_drag_coeffs_mean[:,indices])-0.5)*2*self._drag_random).clamp(-0.5, .5) + 1)
-                self._quad_drag_coeffs[:, indices] = self._quad_drag_coeffs_mean * (((th.rand_like(self._quad_drag_coeffs_mean[:,indices])-0.5)*2*self._drag_random).clamp(-0.5, .5) + 1)
+                noise_lin = ((th.rand_like(self._linear_drag_coeffs_mean) - 0.5) * 2 * self._drag_random).clamp(-0.5, 0.5) + 1
+                noise_quad = ((th.rand_like(self._quad_drag_coeffs_mean) - 0.5) * 2 * self._drag_random).clamp(-0.5, 0.5) + 1
+                self._linear_drag_coeffs = self._linear_drag_coeffs_mean * noise_lin
+                self._quad_drag_coeffs = self._quad_drag_coeffs_mean * noise_quad
 
         return self.state
 
@@ -412,8 +438,15 @@ class Dynamics:
             data = json.load(f)
         self.m = th.tensor(data["mass"])
         self._cross_sections = th.tensor([data["cross_sections"]]).T  # 机体横截面积
-        self._quad_drag_coeffs_mean = th.tensor([data["quad_drag_coeffs"]]).T * 0.5 * 1.225 * self._cross_sections
-        self._linear_drag_coeffs_mean = th.tensor([data["linear_drag_coeffs"]]).T
+        # Fix: Repeat drag coeffs for each agent if needed
+        quad_drag = th.tensor([data["quad_drag_coeffs"]]).T * 0.5 * 1.225 * self._cross_sections
+        linear_drag = th.tensor([data["linear_drag_coeffs"]]).T
+        if quad_drag.shape[1] == 1:
+            quad_drag = quad_drag.repeat(1, self.num)
+        if linear_drag.shape[1] == 1:
+            linear_drag = linear_drag.repeat(1, self.num)
+        self._quad_drag_coeffs_mean = quad_drag
+        self._linear_drag_coeffs_mean = linear_drag
         self._inertia = th.tensor(data["inertia"])
         self.name = data["name"]
         self._BODYRATE_PID = PID(p=th.tensor(data["BODYRAYE_PID"]["p"]),

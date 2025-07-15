@@ -57,10 +57,9 @@ class SquashedDiagGaussianDistribution(SB_SquashedDiagGaussianDistribution):
         return log_prob
 
     def entropy(self) -> Optional[th.Tensor]:
-        # No analytical form,
-        # entropy needs to be estimated using -log_prob.mean()
-        # return None
-        return self.distribution.entropy().sum(dim=-1)
+        # For squashed distributions, return None to use the approximation method
+        # The distribution.entropy() is already properly summed over action dimensions
+        return None
 
 
 def obs_as_tensor(obs: Union[np.ndarray, Dict[str, np.ndarray]], device: th.device) -> Union[th.Tensor, TensorDict]:
@@ -108,14 +107,13 @@ class ContinuousCritic(NormalContinuousCritic):
         action_dim = get_action_dim(self.action_space)
         self.q_networks = []
         for idx in range(n_critics):
-            net, _ = create_mlp(input_dim=features_dim + action_dim,
+            q_net = create_mlp(input_dim=features_dim + action_dim,
                              output_dim=1,
                              activation_fn=activation_fn,
                              layer=net_arch,
-                             bn=bn,
-                             ln=ln,
+                             batch_norm=bn,
+                             layer_norm=ln,
             )
-            q_net = net
             self.add_module(f"qf{idx}", q_net)
             self.q_networks.append(q_net)
 
@@ -194,7 +192,7 @@ class Actor(SAC_Actor):
         self._squash_output = squash_output
         # Deterministic action
         self.deterministic = deterministic
-        self.latent_pi, _ = create_mlp(input_dim=features_dim, layer=net_arch, activation_fn=activation_fn, squash_output=False, bn=bn, ln=ln)
+        self.latent_pi = create_mlp(input_dim=features_dim, layer=net_arch, activation_fn=activation_fn, squash_output=False, batch_norm=bn, layer_norm=ln)
         # self.latent_pi = nn.Flatten()
         self.log_latent_pi = copy.deepcopy(self.latent_pi)
         # self.mu = create_mlp(input_dim=features_dim, layer=net_arch, activation_fn=activation_fn, output_dim=self.action_space.shape[0], squash_output=False)
