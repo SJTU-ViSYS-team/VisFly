@@ -246,9 +246,9 @@ class NavigationEnv2(DroneGymEnvsBase):
         base_r = 0.1
         thrd_perce = th.pi / 18
         target_approaching_v, target_away_v, target_dis = \
-            get_along_vertical_vector(self.target - dyn.position, dyn.velocity)
+            get_along_vertical_vector(self.target - dyn.position, dyn.const_velocity)
         obstacle_approaching_v, obstacle_away_v, collision_dis = \
-            get_along_vertical_vector(collision_vector, dyn.velocity)
+            get_along_vertical_vector(collision_vector, dyn.const_velocity)
         obstacle_spd_r = obstacle_approaching_v.squeeze() * -0.1 * (1 - collision_dis).relu()
         obstacle_dis_r = 1 / (collision_dis + 0.03) * -0.02
         require_spd = (target_dis * 2).clamp(0.5, 10)
@@ -256,7 +256,7 @@ class NavigationEnv2(DroneGymEnvsBase):
 
         view_aware_r = (
                                (
-                                       (dyn.direction * dyn.velocity).sum(dim=1) / (1e-6 + dyn.velocity.norm(dim=1))
+                                       (dyn.direction * dyn.const_velocity).sum(dim=1) / (1e-6 + dyn.const_velocity.norm(dim=1))
                                ).clamp(-1., 1.).acos()
                                - thrd_perce).relu() * -0.01
 

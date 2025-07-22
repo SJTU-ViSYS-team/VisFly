@@ -301,7 +301,7 @@ class DroneEnvsBase:
                             np.transpose(np.stack([each_agent_obs[sensor_uuid] for each_agent_obs in img_obs])[..., :3], (0, 3, 1, 2))
                     elif "semantic" in sensor_uuid:
                         self._sensor_obs[sensor_uuid] = \
-                            np.stack([each_agent_obs[sensor_uuid] for each_agent_obs in img_obs])
+                            np.expand_dims(np.stack([each_agent_obs[sensor_uuid] for each_agent_obs in img_obs]),1)
                     else:
                         raise KeyError("Can not find uuid of sensors")
             else:
@@ -388,6 +388,8 @@ class DroneEnvsBase:
     def close(self):
         self.dynamics.close()
         self.sceneManager.close() if self.visual else None
+        delattr(self, "sceneManager")
+        self.sceneManager = None
 
     def render(self, **kwargs):
         if not self.visual:
@@ -470,5 +472,12 @@ class DroneEnvsBase:
     def dynamic_object_position(self):
         if self.sceneManager:
             return self.sceneManager.dynamic_object_position
+        else:
+            return [[None] for _ in range(self.dynamics.num)]
+
+    @property
+    def dynamic_object_velocity(self):
+        if self.sceneManager:
+            return self.sceneManager.dynamic_object_velocity
         else:
             return [[None] for _ in range(self.dynamics.num)]

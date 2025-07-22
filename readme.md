@@ -488,17 +488,18 @@ python examples/cluttered_flight/rl.py -t 0 -w "PPO_second_structure_1"
 Sometimes the fact implies that it is hard to well train the policy in one step.
 That means we need to employ meta learning or curriculum learning which divides the training process into several stages.
 First we teach the drone how to stably hover, so we define `get_reward()` as:
+
 ```python
 def get_reward(self) -> th.Tensor:
     base_r = 0.1
-    pos_factor = -0.1 * 1/9
+    pos_factor = -0.1 * 1 / 9
     reward = (
             base_r +
-             (self.position - self.target).norm(dim=1) * pos_factor +
-             (self.orientation - th.tensor([1, 0, 0, 0])).norm(dim=1) * -0.00001 +
-             (self.velocity - 0).norm(dim=1) * -0.002 +
-             (self.angular_velocity - 0).norm(dim=1) * -0.002
-             + self._success * (self.max_episode_steps - self._step_count) * base_r 
+            (self.position - self.target).norm(dim=1) * pos_factor +
+            (self.orientation - th.tensor([1, 0, 0, 0])).norm(dim=1) * -0.00001 +
+            (self.const_velocity - 0).norm(dim=1) * -0.002 +
+            (self.angular_velocity - 0).norm(dim=1) * -0.002
+            + self._success * (self.max_episode_steps - self._step_count) * base_r
     )
     return reward
 ```
@@ -510,24 +511,26 @@ python examples/cluttered_flight/rl.py -t 1 -c "first_train"
 
 Now the agent has grasped basic flying skills. Then we train it to fly while avoiding the obstacles.
 Change the `get_reward()` and use another cluttered scene datasets path:
+
 ```python
 # in main.py
 scene_path = "datasets/visfly-beta/configs/garage_simple_l_medium"
+
 
 # in NavigationEnv.py
 def get_reward(self) -> th.Tensor:
     # precise and stable target flight
     base_r = 0.1
-    thrd_perce = th.pi/18
-    reward = base_r*0 + \
-            ((self.velocity *(self.target - self.position)).sum(dim=1) / (1e-6+(self.target - self.position).norm(dim=1))).clamp_max(10) * 0.01+\
-             (((self.direction * self.velocity).sum(dim=1) / (1e-6+self.velocity.norm(dim=1)) / 1).clamp(-1., 1.).acos().clamp_min(thrd_perce)-thrd_perce)*-0.01+\
-             (self.orientation - th.tensor([1, 0, 0, 0])).norm(dim=1) * -0.00001 + \
-             (self.velocity - 0).norm(dim=1) * -0.002 + \
-             (self.angular_velocity - 0).norm(dim=1) * -0.002 + \
-             1 / (self.collision_dis + 0.2) * -0.01 + \
-             (1-self.collision_dis ).relu() * ((self.collision_vector * (self.velocity - 0)).sum(dim=1) / (1e-6+self.collision_dis)).relu() * -0.005 + \
-             self._success * (self.max_episode_steps - self._step_count) * base_r * (0.2+0.8/ (1+1*self.velocity.norm(dim=1)))
+    thrd_perce = th.pi / 18
+    reward = base_r * 0 +
+             ((self.const_velocity * (self.target - self.position)).sum(dim=1) / (1e-6 + (self.target - self.position).norm(dim=1))).clamp_max(10) * 0.01 +
+             (((self.direction * self.const_velocity).sum(dim=1) / (1e-6 + self.const_velocity.norm(dim=1)) / 1).clamp(-1., 1.).acos().clamp_min(thrd_perce) - thrd_perce) * -0.01 +
+             (self.orientation - th.tensor([1, 0, 0, 0])).norm(dim=1) * -0.00001 +
+             (self.const_velocity - 0).norm(dim=1) * -0.002 +
+             (self.angular_velocity - 0).norm(dim=1) * -0.002 +
+             1 / (self.collision_dis + 0.2) * -0.01 +
+             (1 - self.collision_dis).relu() * ((self.collision_vector * (self.const_velocity - 0)).sum(dim=1) / (1e-6 + self.collision_dis)).relu() * -0.005 +
+             self._success * (self.max_episode_steps - self._step_count) * base_r * (0.2 + 0.8 / (1 + 1 * self.const_velocity.norm(dim=1)))
     return reward
 ```
 Run in bash:

@@ -255,7 +255,7 @@ class MultiDroneGymEnvBase(VecEnv):
 
     @property
     def velocity(self):
-        return self.envs.velocity
+        return self.envs.const_velocity
 
     @property
     def angular_velocity(self):

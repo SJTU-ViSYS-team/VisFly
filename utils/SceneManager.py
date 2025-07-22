@@ -165,6 +165,7 @@ class SceneManager(ABC):
             )
             self._obj_loader = _objLoader
         self.dynamic_object_position = [[None] for _ in range(num_agent_per_scene*num_scene)]
+        self.dynamic_object_velocity = [[None] for _ in range(num_agent_per_scene*num_scene)]
 
         self.scenes: List[habitat_sim.scene] = [None for _ in range(num_scene)]
         self.agents: List[List[habitat_sim.agent]] = [[] for _ in range(num_scene)]
@@ -384,7 +385,8 @@ class SceneManager(ABC):
             # test = self.scenes[scene_id].path_finder
             col_record = self.scenes[scene_id].get_closest_collision_point(
                 pt=self.agents[scene_id][agent_id].scene_node.translation,
-                max_search_radius=sensitive_radius
+                max_search_radius=sensitive_radius,
+                is_object_collidable=False,
             )
             self._collision_point[scene_id][agent_id], self._is_out_bounds[scene_id][agent_id] = col_record.hit_pos, col_record.is_out_bound
 
@@ -919,9 +921,9 @@ class SceneManager(ABC):
         return sensor_cfgs_list
 
     def close(self):
-        for scene in self.scenes:
-            scene.close()
-            break
+        for scene_id in range(self.num_scene):
+            self.scenes[scene_id].close()
+            # self.scenes[scene_id] = None
 
     @property
     def is_out_bounds(self):
@@ -933,6 +935,7 @@ class SceneManager(ABC):
 
     def _update_dynamics(self):
         self.dynamic_object_position = [obj_ctrl.position for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
+        self.dynamic_object_velocity = [obj_ctrl.velocity for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
     # @property
     # def dynamic_object_position(self):
     #     if self.obj_settings:

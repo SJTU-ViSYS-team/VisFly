@@ -610,6 +610,27 @@ class ImageExtractor(CustomBaseFeaturesExtractor):
         self._features_dim = sum(_image_features_dims)
 
 
+class FlexibleExtractor(CustomBaseFeaturesExtractor):
+    def __init__(self,
+                 observation_space: spaces.Dict,
+                 net_arch: Dict = {},
+                 activation_fn: Type[nn.Module] = nn.ReLU,
+                 ):
+        super(FlexibleExtractor, self).__init__(observation_space=observation_space,
+                                                 net_arch=net_arch,
+                                                 activation_fn=activation_fn)
+
+    def _build(self, observation_space, net_arch, activation_fn):
+        self._features_dim = 0
+        for key, value in net_arch.items():
+            if "semantic" in key or "color" in key or "depth" in key:
+                _image_features_dim = set_cnn_feature_extractor(self, key, observation_space[key], net_arch.get(key, {}), activation_fn)
+                self._features_dim += _image_features_dim
+            elif "state" in key:
+                _state_features_dim = set_mlp_feature_extractor(self, key, observation_space[key], net_arch.get(key, {}), activation_fn)
+                self._features_dim += _state_features_dim
+
+
 class StateTargetExtractor(CustomBaseFeaturesExtractor):
     def __init__(self,
                  observation_space: spaces.Dict,
@@ -814,6 +835,7 @@ def load_extractor_class(cls):
         "StateGateExtractor": StateGateExtractor,
         "EmptyExtractor": EmptyExtractor,
         "LatentCombineExtractor": LatentCombineExtractor,
+        "FlexibleExtractor": FlexibleExtractor,
     }
     if cls in cls_alias.keys():
         return cls_alias[cls]

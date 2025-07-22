@@ -646,3 +646,11 @@ class Dynamics:
             self.t.unsqueeze(1),
         ]
         )
+
+    @property
+    def R(self):
+        return self._orientation.R
+
+    @property
+    def xz_axis(self):
+        return self._orientation.xz_axis

@@ -1,0 +1,57 @@
+{
+  "objects": [
+    {
+      "name": "object_target",
+      "model_path": "objects2",
+      "initial": {
+        "class": "Uniform",
+        "kwargs": {
+          "position": {
+            "mean": [
+              1.5,
+              0,
+              1.5
+            ],
+            "half": [
+              0.0,
+              0,
+              0
+            ]
+          },
+          "orientation": {
+            "mean": [
+              0,
+              0,
+              0
+            ],
+            "half": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      },
+      "velocity": {
+        "class": "Uniform",
+        "kwargs": {
+          "mean": 1.0,
+          "half": 0.0
+        }
+      },
+      "angular_velocity": 0,
+      "path": {
+        "class": "circle",
+        "comment": "assert in circle, polygon, rrt",
+        "kwargs": {
+          "radius": 2.0,
+          "center": [
+            5,
+            0,
+            1.0
+          ]
+        }
+      }
+    }
+  ]
+}
