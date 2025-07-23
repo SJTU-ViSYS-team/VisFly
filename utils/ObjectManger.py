@@ -38,7 +38,7 @@ class Path:
             # 新增cubic spline支持
             # self.control_points = np.array(kwargs["points"])
             points_info = kwargs["points"]
-            self.control_points = load_generator(cls=points_info["class"], kwargs=points_info["kwargs"]).generate(1)[0]
+            self.control_points = load_generator(cls=points_info["class"], kwargs=points_info["kwargs"]).generate(1)[0][0]
             # add last point as first point to close the loop
             self.control_points = np.concatenate([self.control_points, self.control_points[:1]], axis=0)
             self.position = self.control_points[0]

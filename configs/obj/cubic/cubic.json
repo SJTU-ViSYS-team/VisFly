@@ -35,8 +35,8 @@
       "velocity": {
         "class": "Uniform",
         "kwargs": {
-          "mean": 0.5,
-          "half": 0.5
+          "mean": 1.0,
+          "half": 1.0
         }
       },
       "angular_velocity": 0,

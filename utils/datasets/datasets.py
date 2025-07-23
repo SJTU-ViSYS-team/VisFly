@@ -408,6 +408,11 @@ class ChildrenPathDataset(Dataset):
             root_path = os.path.abspath(__file__).split("utils")[0]+("/"+self.root_path).split("/VisFly/")[-1]
             self.paths = self._load_scene_path(semantic=semantic, root_path=root_path)
         if len(self.paths) == 0:
+            import sys
+            folder_path = os.path.dirname(os.path.abspath(sys.argv[0]))+"/"
+            root_path = folder_path+("/"+self.root_path).split("/VisFly/")[-1]
+            self.paths = self._load_scene_path(semantic=semantic, root_path=root_path)
+        if len(self.paths) == 0:
             raise FileNotFoundError(f"No files found in the path: {self.root_path}")
 
     def _load_scene_path(self, semantic=False, root_path=None):

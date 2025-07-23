@@ -101,6 +101,7 @@ class TestBase:
         obs = env.reset(is_test=True)
         self._img_names = [name for name in obs.keys() if (("color" in name) or ("depth" in name) or ("semantic" in name))]
         self.obs_all.append(obs)
+        self.obs_all[-1]["target"] = copy.deepcopy(env.envs.dynamic_object_position)
         self.state_all.append(env.state)
         self.info_all.append([{} for _ in range(env.num_envs)])
         self.t.append(env.t.clone())
@@ -130,6 +131,7 @@ class TestBase:
             self.action_all.append(action)
             self.state_all.append(state)
             self.obs_all.append(obs)
+            self.obs_all[-1]["target"] = copy.deepcopy(env.envs.dynamic_object_position)
             self.info_all.append(copy.deepcopy(info))
             self.t.append(env.t.clone())
             if env.visual:
@@ -150,6 +152,8 @@ class TestBase:
         mean_r = th.as_tensor(self.eq_r,dtype=th.float32).mean().item()
         mean_l = th.as_tensor(self.eq_l,dtype=th.float32).mean().item()
         # print(f"Average Rewards:{mean_r}, Average Length:{mean_l}")
+        # save state_all and obs_all
+
 
         if is_fig:
             figs = self.draw()
@@ -185,6 +189,8 @@ class TestBase:
             cv2.imshow(winname=render_name, mat=image)
             if is_sub_video:
                 for name in self._img_names:
+                    if "semantic" in name:
+                        obs[name] = obs[name]/5
                     cv2.imshow(winname=name,
                                mat=np.hstack(np.transpose(obs[name], (0,2,3,1) ))
                                )
@@ -197,7 +203,7 @@ class TestBase:
         fig.savefig(f"{path}/{c}.png")
         print(f"fig saved in {path}/{c}.png")
 
-    def save_video(self, is_sub_video=False):
+    def save_video(self, is_sub_video=True):
         height, width, layers = self.render_image_all[0].shape
         names = self.name if self.name is not None else "video"
 
@@ -217,7 +223,7 @@ class TestBase:
             for name in self._img_names:
                 path_obs.append(f"{self.save_path}/{name}.mp4")
                 width, height = self.obs_all[0][name].shape[3]*self.obs_all[0][name].shape[0], self.obs_all[0][name].shape[2]
-                video_obs.append(cv2.VideoWriter(path_obs[-1], cv2.VideoWriter_fourcc(*'mp4v'), int(1/self.env.dynamics.dt), (width, height)))
+                video_obs.append(cv2.VideoWriter(path_obs[-1], cv2.VideoWriter_fourcc(*'mp4v'), int(1/self.env.envs.dynamics.dt), (width, height)))
 
         # 将图片写入视频
         for index, (image, t, obs) in enumerate(zip(self.render_image_all, self.t, self.obs_all)):

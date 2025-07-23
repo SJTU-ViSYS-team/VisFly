@@ -100,10 +100,10 @@ class UniformStateRandomizer(StateRandomizer):
         self.angular_velocity = Uniform(**angular_velocity)
 
     def _generate(self, num, **kwargs) -> tuple:
-        position = (2 * th.rand(num, 3) - 1) * self.position.half + self.position.mean
-        orientation = (2 * th.rand(num, 3) - 1) * self.orientation.half + self.orientation.mean
-        velocity = (2 * th.rand(num, 3) - 1) * self.velocity.half + self.velocity.mean
-        angular_velocity = (2 * th.rand(num, 3) - 1) * self.angular_velocity.half + self.angular_velocity.mean
+        position = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.position.half.unsqueeze(0) + self.position.mean.unsqueeze(0)
+        orientation = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.orientation.half.unsqueeze(0) + self.orientation.mean.unsqueeze(0)
+        velocity = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.velocity.half.unsqueeze(0) + self.velocity.mean.unsqueeze(0)
+        angular_velocity = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.angular_velocity.half.unsqueeze(0) + self.angular_velocity.mean.unsqueeze(0)
         return position, orientation, velocity, angular_velocity
 
 
@@ -133,16 +133,17 @@ class NormalStateRandomizer(StateRandomizer):
         self.position = Normal(**position)
 
     def _generate(self, num, **kwargs) -> tuple:
-        position = th.randn(num, 3) * self.position.std + self.position.mean
-        orientation = th.randn(num, 3) * self.orientation.std + self.orientation.mean
-        velocity = th.randn(num, 3) * self.velocity.std + self.velocity.mean
-        angular_velocity = th.randn(num, 3) * self.angular_velocity.std + self.angular_velocity.mean
+        position = (2 * th.randn(num, *self.position.mean.shape) - 1) * self.position.std.unsqueeze(0) + self.position.mean.unsqueeze(0)
+        orientation = (2 * th.randn(num, *self.position.mean.shape) - 1) * self.orientation.std.unsqueeze(0) + self.orientation.mean.unsqueeze(0)
+        velocity = (2 * th.randn(num, *self.position.mean.shape) - 1) * self.velocity.std.unsqueeze(0) + self.velocity.mean.unsqueeze(0)
+        angular_velocity = (2 * th.randn(num, *self.position.mean.shape) - 1) * self.angular_velocity.std.unsqueeze(0) + self.angular_velocity.mean.unsqueeze(0)
         return position, orientation, velocity, angular_velocity
 
 
 class TargetUniformRandomizer(UniformStateRandomizer):
-    def __init__(self, mini_dis=0.5, *args, **kwargs):
-        self.mini_dis = mini_dis
+    def __init__(self, min_dis=0.5, max_dis=10.0, *args, **kwargs):
+        self.min_dis = min_dis
+        self.max_dis = max_dis
         super().__init__(*args, **kwargs)
         
     def _generate(self, num, **kwargs) -> tuple:
@@ -166,8 +167,17 @@ class TargetUniformRandomizer(UniformStateRandomizer):
             pitch = th.arcsin(z / norm)
             return yaw, pitch
         target_position = kwargs["position"]
-        position = ((2 * th.rand(num, 3) - 1) * self.position.half)
-        position = position.sign() * position.abs().clamp_min(self.mini_dis) + target_position.unsqueeze(0)
+        position = ((2 * th.rand(num, *self.position.half.shape) - 1) * self.position.half.unsqueeze(0))
+        position_norm = position.norm(dim=1, keepdim=True)
+        # Create scaling factor
+        scale_factor = th.ones_like(position_norm)
+        # If norm > max_dis, scale down
+        scale_factor = th.where(position_norm > self.max_dis, self.max_dis / position_norm, scale_factor)
+        # If norm < min_dis, scale up
+        scale_factor = th.where(position_norm < self.min_dis, self.min_dis / position_norm, scale_factor)
+        # Apply scaling
+        position = position * scale_factor
+        position = position + target_position.unsqueeze(0)
         direction = target_position.unsqueeze(0)-position
         yaw, pitch = calculate_yaw_pitch(direction)
         orientation = th.stack([th.zeros(num), pitch*0, yaw], dim=1) + (2 * th.rand(num, 3) - 1) * self.orientation.half # yaw, pitch, roll
