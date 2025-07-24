@@ -64,7 +64,7 @@ sensor_kwargs = [{
 scene_kwargs = {
     "path": scene_path,
     "obj_settings": {
-        "path": "circle",
+        "path": "obj2",
     },
     "render_settings": {
         "mode": "fix",
@@ -139,5 +139,5 @@ while True:
     # print(env.envs.dynamic_object_position)
     # plot_triangle_mesh(env.envs.sceneManager.scenes[0].object_mesh.vertices, faces=env.envs.sceneManager.scenes[0].object_mesh.faces)
     # plot_triangle_mesh(env.envs.sceneManager.scenes[0].scene_mesh.vertices, faces=env.envs.sceneManager.scenes[0].scene_mesh.faces)
-    cv.waitKey(100)
+    cv.waitKey(1)
     t += 1

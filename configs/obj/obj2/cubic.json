@@ -35,8 +35,8 @@
       "velocity": {
         "class": "Uniform",
         "kwargs": {
-          "mean": 1.0,
-          "half": 0.0
+          "mean": 1.1,
+          "half": 1.1
         }
       },
       "angular_velocity": 0,
@@ -44,13 +44,25 @@
         "class": "cubic",
         "comment": "assert in cicular, polygon, rrt",
         "kwargs": {
-          "points": [
-            [9,3,1.0],
-            [12,3,1.0],
-            [12,-2,1.0],
-            [8,-2,1.0]
-
-          ]
+          "points": {
+            "class": "Uniform",
+            "kwargs": {
+              "position":{
+              "mean": [
+                [9,3,1.0],
+                [12,3,1.0],
+                [12,-2,1.0],
+                [8,-2,1.0]
+              ],
+              "half": [
+                [0,0,0.0],
+                [0,0,0.0],
+                [0,0,0.0],
+                [0,0,0.0]
+              ]
+            }
+            }
+          }
         }
       }
     }

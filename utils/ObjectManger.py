@@ -54,9 +54,9 @@ class Path:
         self.cumulative_distances = np.concatenate([[0], np.cumsum(distances)])
 
         # 创建三次样条（参数化）
-        self.cs_x = CubicSpline(self.cumulative_distances, self.control_points[:, 0], bc_type="clamped")
-        self.cs_y = CubicSpline(self.cumulative_distances, self.control_points[:, 1], bc_type="clamped")
-        self.cs_z = CubicSpline(self.cumulative_distances, self.control_points[:, 2], bc_type="clamped")
+        self.cs_x = CubicSpline(self.cumulative_distances, self.control_points[:, 0], bc_type="periodic")
+        self.cs_y = CubicSpline(self.cumulative_distances, self.control_points[:, 1], bc_type="periodic")
+        self.cs_z = CubicSpline(self.cumulative_distances, self.control_points[:, 2], bc_type="periodic")
 
         # 计算弧长参数化
         self._compute_arc_length_parameterization()

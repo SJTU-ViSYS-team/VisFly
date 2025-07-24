@@ -463,9 +463,10 @@ class Dynamics:
         if self.action_type == ACTION_TYPE.BODYRATE:
             if thrust_normalize_method == "medium":
                 # (_, average_)
+                max_bias = 1
                 thrust_scale = (self.m * -g[2]) / self.m
                 # thrust_scale = (self.m * -g[2]) * 1 / self.m
-                thrust_bias = (self.m * -g[2]) * 1 / self.m
+                thrust_bias = (self.m * -g[2]) * max_bias / self.m
             elif thrust_normalize_method == "max_min":
                 # (min_act, max_act)->(min_thrust, max_thrust) this method try to reach the limit of drone, which is negative for sim2real
                 thrust_scale = (

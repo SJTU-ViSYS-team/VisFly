@@ -418,7 +418,7 @@ class ChildrenPathDataset(Dataset):
     def _load_scene_path(self, semantic=False, root_path=None):
         if "hm3d" in root_path.lower():
             # key = "*.basis.glb" if not semantic else "*.semantic.glb"
-            key =  "*.semantic.glb"
+            key = "*.semantic.glb"
         elif "mp3d" in root_path.lower():
             key = "*_semantic.ply"
         elif self.type == "json":

@@ -37,7 +37,7 @@ sensor_kwargs = [{
 scene_kwargs = {
     "path": scene_path,
     "obj_settings": {
-        "path": "obj2",
+        "path": "cubic",
     },
     "render_settings": {
         "mode": "fix",
@@ -70,7 +70,7 @@ env = DynEnv(
 env.reset()
 obj_pos = []
 t = 0
-while t<=300:
+while t<=500:
     # a = th.rand((num_agent*num_scene, 4))
     a = th.zeros((num_agent * num_scene, 4)) + th.tensor([-0.2, 0, 0, 0])
     env.step(a)
