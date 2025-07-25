@@ -1,6 +1,8 @@
 import os
 import sys
 
+from VisFly.utils.common import load_yaml_config
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from VisFly.envs.NavigationEnv import NavigationEnv2
@@ -12,6 +14,7 @@ from habitat_sim.sensor import SensorType
 from VisFly.utils.maths import Quaternion
 from VisFly.envs.DynamicEnv import DynEnv
 from VisFly.utils.test.mesh_plot import plot_rectangle_mesh, plot_triangle_mesh
+from envs.ObjectTrackingEnv import ObjectTrackingEnv
 
 
 def get_batch_mask_centers_torch(mask_batch):
@@ -82,7 +85,7 @@ scene_kwargs = {
     }
 }
 num_agent = 4
-num_scene = 1  # 4 agents in each scene
+num_scene = 2  # 4 agents in each scene
 env = DynEnv(
     visual=True,
     num_scene=num_scene,
@@ -95,7 +98,9 @@ env = DynEnv(
 )
 
 env.reset()
-
+env_config = load_yaml_config(f'exps/std/env_cfgs/objTracking.yaml')
+env = ObjectTrackingEnv(**env_config["eval_env"])
+env.reset()
 t = 0
 while True:
     # a = th.rand((num_agent*num_scene, 4))
@@ -110,14 +115,14 @@ while True:
     # print(env.position[0])
     obs = env.sensor_obs["depth"]
     semantic = env.sensor_obs["semantic"]
-    cv.imshow("img", cv.cvtColor(img[0], cv.COLOR_RGBA2BGRA))
+    cv.imshow("img", cv.cvtColor(np.hstack(img), cv.COLOR_RGBA2BGRA))
     # cv.imshow("obs", np.transpose(obs[0], (1, 2, 0)))
-    drone_obs = np.hstack([i[0] for i in obs[:num_agent]])/5
-    drone_seg = np.hstack([i[0] for i in semantic[:num_agent]])
+    drone_obs = np.hstack([i[0] for i in obs[:num_agent*num_scene]])/5
+    drone_seg = np.hstack([i[0] for i in semantic[:num_agent*num_scene]])
     cv.imshow("depth", cv.cvtColor(drone_obs, cv.COLOR_RGBA2BGRA))
     drone_seg = np.where(drone_seg==5, drone_seg, 0)
     mask = drone_seg==5
-    centers = get_batch_mask_centers_torch(th.tensor(semantic==5).squeeze())
+    centers = get_batch_mask_centers_torch(th.tensor(semantic==5).squeeze(1))
     drone_seg_vis = drone_seg.copy().astype(np.float32)
 
     # 在每个agent的图像区域画center点
@@ -139,5 +144,5 @@ while True:
     # print(env.envs.dynamic_object_position)
     # plot_triangle_mesh(env.envs.sceneManager.scenes[0].object_mesh.vertices, faces=env.envs.sceneManager.scenes[0].object_mesh.faces)
     # plot_triangle_mesh(env.envs.sceneManager.scenes[0].scene_mesh.vertices, faces=env.envs.sceneManager.scenes[0].scene_mesh.faces)
-    cv.waitKey(1)
+    cv.waitKey(100)
     t += 1

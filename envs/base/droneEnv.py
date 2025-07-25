@@ -243,7 +243,7 @@ class DroneEnvsBase:
                 th.empty((len(indices), 3), device=self.device), th.empty((len(indices), 3), device=self.device)
         for data_id, index in enumerate(indices):
             positions[data_id], orientations[data_id], velocities[data_id], angular_velocities[data_id] = \
-                self.stateGenerators[index].safe_generate(num=1, position=self.dynamic_object_position[data_id][0])
+                self.stateGenerators[index].safe_generate(num=1, position=self.dynamic_object_position[index][0])
 
         return positions, orientations, velocities, angular_velocities
 
