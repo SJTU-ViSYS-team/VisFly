@@ -31,7 +31,7 @@ class MlpExtractor2(MlpExtractor):
             device=device
         )
 
-        self.policy_net,_ = create_mlp(
+        self.policy_net, _ = create_mlp(
             input_dim=pi_features_dim,
             layer=net_arch["pi"],
             activation_fn=activation_fn,

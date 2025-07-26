@@ -1,6 +1,6 @@
 .vscode/
 .idea/
-debug/*
+
 ！debug/*.py
 datasets/*
 !datasets/.gitkeep

@@ -25,7 +25,7 @@ class DroneEnvsBase:
             random_kwargs: Optional[Dict] = {},
             dynamics_kwargs: Optional[Dict] = {},
             scene_kwargs: Optional[Dict] = {},
-            sensor_kwargs: Optional[Dict] = None,
+            sensor_kwargs: Optional[Dict] = {},
             uav_radius: float = 0.1,
             sensitive_radius: float = 10.,
             multi_drone: bool = False,
@@ -50,6 +50,7 @@ class DroneEnvsBase:
             num=num_agent_per_scene * num_scene,
             seed=seed,
             device=device,
+            drag_random=random_kwargs.get("drag_random", 0.),
             **dynamics_kwargs
         )
         self._create_noise_model()
@@ -57,6 +58,9 @@ class DroneEnvsBase:
         self.is_multi_drone = multi_drone
         if self.is_multi_drone and (num_agent_per_scene == 1):
             raise ValueError("Num of agents should not be 1 in multi drone env.")
+
+        if "obj_settings" in scene_kwargs:
+            scene_kwargs["obj_settings"]["dt"] = self.dynamics.ctrl_dt
 
         self.sceneManager: SceneManager = SceneManager(
             num_agent_per_scene=num_agent_per_scene,
@@ -138,7 +142,14 @@ class DroneEnvsBase:
             self._flatten_bboxes = [bbox.flatten() for bbox in bboxes]
 
     def _create_randomizer(self, random_kwargs: Dict):
-        state_random_kwargs = random_kwargs.get("state_generator", {})
+        state_random_kwargs = random_kwargs.get("state_generator",
+                                                {
+                                                    "class": "Uniform",
+                                                    "kwargs": [
+                                                        {"position": {"mean": [0., 0., 1.], "half": [0., 0., 0.0]}},
+                                                    ]
+                                                }
+                                                )
         state_generator_class = state_random_kwargs.get("class", UniformStateRandomizer)
         if isinstance(state_generator_class, str):
             state_generator_class = self.state_generator_alias.get(state_generator_class, None)
@@ -313,7 +324,7 @@ class DroneEnvsBase:
             # indices are not None
             else:
                 self._collision_point[indices] = self.sceneManager.get_collision_point(indices=indices).to(self.device)
-            self._is_out_bounds = self.sceneManager.is_out_bounds
+            self._is_out_bounds = self.sceneManager.is_out_bounds.to(self.device)
 
         # not visual
         else:
@@ -343,6 +354,7 @@ class DroneEnvsBase:
         self.dynamics.step(action)
         if self.visual:
             self.sceneManager.set_pose(self.dynamics.position, self.dynamics._orientation.toTensor().T)
+            # self.sceneManager.step()
         self.update_observation()
         self.update_collision()
 
@@ -427,9 +439,13 @@ class DroneEnvsBase:
     def full_state(self):
         return self.dynamics.full_state
 
-    # @property
-    # def acceleration(self):
-    #     return self.dynamics.acceleration
+    @property
+    def acceleration(self):
+        return self.dynamics.acceleration
+
+    @property
+    def angular_acceleration(self):
+        return self.dynamics.angular_acceleration
 
     @property
     def collision_point(self):
@@ -442,3 +458,7 @@ class DroneEnvsBase:
     @property
     def collision_dis(self):
         return self._collision_dis
+
+    @property
+    def dynamic_object_position(self):
+        return self.sceneManager.dynamic_object_position

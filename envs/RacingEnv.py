@@ -33,15 +33,6 @@ class RacingEnv(DroneGymEnvsBase):
         random_kwargs = {
             "state_generator":
                 {
-                    "class": "Uniform",
-                    "kwargs": [
-                        {"position": {"mean": [1., 0., 2.], "half": [.2, .2, 0.2]}},
-                    ]
-                }
-        }
-        random_kwargs = {
-            "state_generator":
-                {
                     "class": "Union",
 
                     "kwargs": [
@@ -77,18 +68,7 @@ class RacingEnv(DroneGymEnvsBase):
 
                 }
         }
-        sensor_kwargs = [{
-            "sensor_type": SensorType.DEPTH,
-            "uuid": "depth",
-            "resolution": [64, 64],
-        }]
-        sensor_kwargs = []
-        dynamics_kwargs = {
-            "dt": 0.02,
-            "ctrl_dt": 0.02,
-            "action_type": "thrust",
-            "ctrl_delay": False,
-        }
+
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
             num_scene=num_scene,

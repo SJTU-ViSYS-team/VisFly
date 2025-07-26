@@ -1,113 +1,169 @@
 import numpy as np
 import torch as th
-from ..utils.randomization import UniformStateRandomizer, NormalStateRandomizer, StateRandomizer
+import magnum as mn
+
+from .common import std_to_habitat
+from ..utils.randomization import UniformStateRandomizer, NormalStateRandomizer, StateRandomizer, load_generator, load_dist
+from ..utils.datasets.datasets import get_files_with_suffix
 import os, sys
 import json
 
 g = th.as_tensor([[0, 0, -9.8]])
 
 
+class Path:
+    def __init__(self, cls, velocity, kwargs):
+        self.cls = cls
+        self.velocity = velocity
+        if "comment" in kwargs:
+            kwargs.pop("comment")
+        if cls == "circle":
+            self.radius = kwargs["radius"]
+            self.center = kwargs["center"]
+            self.angular_velocity = self.velocity / self.radius
+        elif cls == "polygon":
+            self.points = th.as_tensor(kwargs["points"])
+            self.num_points = len(self.points)
+            assert self.num_points >= 2, "Polygon path must have at least two points."
+            self.current_index = 0
+            self.position = self.points[0]
+
+    # description
+    def __repr__(self):
+        return f"ObjectManager(type={self.cls})"
+
+    def get_target(self, t, pos, dt):
+        if self.cls == "circle":
+            x = self.radius * np.cos(self.angular_velocity * t) + self.center[0]
+            y = self.radius * np.sin(self.angular_velocity * t) + self.center[1]
+            z = self.center[2]
+            return th.tensor([x, y, z], dtype=th.float32).unsqueeze(0)
+        elif self.cls == "polygon":
+            next_index = (self.current_index + 1) % self.num_points
+            dis_vec = self.points[next_index] - self.position
+            dis_norm = dis_vec.norm()
+            dis_vector = dis_vec / dis_norm
+            velocity = self.velocity if dis_norm > self.velocity * dt else dis_norm / dt
+            self.position = self.position + dis_vector * velocity * dt
+            # print(dis_norm,  self.velocity * dt)
+
+            if dis_norm <= self.velocity * dt:
+                self.current_index = next_index
+            return self.position
+        elif self.cls == "rrt":
+            pass
+
+    def reset(self):
+        if self.cls == "circle":
+            pass
+        elif self.cls == "polygon":
+            self.current_index = 0
+        elif self.cls == "rrt":
+            pass
+            # replan the path
+
+
 class ObjectManager:
     def __init__(
             self,
-            num_scene,
-            num_agent_per_scene,
+            obj_mgr,
             dt,
-            object_scene_handle=None,
-            object_setting=None,
-            isolated=False,
-            device=th.device("cpu")
-
+            path=None,
+            scene_id=None,
+            collision_func=None,
+            scene_node=None,
     ):
         """
-
         Args:
-            num_scene: num of scenes
-            num_agent_per_scene: num of agents per scene
             dt: time interval
-            object_scene_handle: object handles in habitat-sim if vision is available
-            object_kwargs: The settings of objects or the path of settings of objects
         """
-        self.num_envs = num_scene * num_agent_per_scene
-        self.num_scene = num_scene
-        self.num_agent_per_scene = num_agent_per_scene
-        self.handles = object_scene_handle
+        self.obj_mgr = obj_mgr
         self.dt = dt
 
-        self._position = None
-        self._orientation = None
-        self._velocity = None
-        self._angular_velocity = None
+        self._t = 0
 
-        self._object_isolated = isolated
-        self._object_setting = object_setting
-        self._init_model()
+        self._path = path
+        self.scene_node = scene_node
+        self._init_model(scene_id=scene_id, collision_func=collision_func)
 
-        self.device = device
+    def _load_data_generator(self, data):
+        pass
 
-    def _init_model(self):
-        current_file_addr = os.path.dirname(os.path.abspath(__file__))
-        _object_setting = current_file_addr + "/../configs/objects.json" if self._object_setting is None else self._object_setting
-        js_file = open(_object_setting)
-        kwargs = json.load(js_file)["objects"]
-        state_generators = []
-        for kwarg in kwargs:
-            if kwarg["class"] == "uniform":
-                state_generators.append(UniformStateRandomizer(**kwarg["kwargs"]))
-            elif kwargs["class"] == "normal":
-                state_generators.append(NormalStateRandomizer(**kwarg["kwargs"]))
+    def _init_model(self, scene_id=None, collision_func=None):
+        js_file = open(self._path)
+        objs_setting = json.load(js_file)["objects"]
 
-        self.state_generators = state_generators
-        if self.num_scene > 1 or len(kwargs) > 1:
-            raise NotImplementedError
+        self._generators = []
+        self._velocity = []
+        self._angular_velocity = []
+
+        self._positions = [None for _ in range(len(objs_setting))]
+        self._orientations = [None for _ in range(len(objs_setting))]
+
+        self._objects_handles = []
+        self._target_mgrs = []
+
+        root_addr = os.path.dirname(__file__) + "/../"
+
+        # self._model_paths = []
+        for obj_setting in objs_setting:
+            name = obj_setting["name"]
+            obj_model_path = root_addr + f'datasets/spy_datasets/configs/{obj_setting["model_path"]}'
+            model_path = get_files_with_suffix(obj_model_path, ".json")
+            generator = load_generator(
+                cls=obj_setting["initial"]["class"],
+                kwargs=obj_setting["initial"]["kwargs"],
+                scene_id=scene_id,
+                is_collision_func=collision_func
+            )
+            self._generators.append(generator)
+
+            velocity = load_dist(obj_setting["velocity"]).generate(1)
+            self._velocity.append(velocity)
+            self._angular_velocity.append(load_dist(obj_setting["angular_velocity"]).generate(1))
+            self._objects_handles.append(
+                self.obj_mgr.add_object_by_template_handle(model_path[th.randint(0, len(model_path), (1,))],attachment_node=self.scene_node)
+            )
+
+            self._target_mgrs.append(Path(cls=obj_setting["path"]["class"], velocity=velocity, kwargs=obj_setting["path"]["kwargs"]))
+
         self.reset()
 
-    def step(self):
-        self._velocity, self._angular_velocity = self.compute_spd()
-        self._position += self._velocity * self.dt
-
-    def reset_by_id(self, indices=None):
-        if indices is None:
-            self.reset()
-        else:
-            if self._object_isolated:
-                pos, ori, vel, ang_vel = self.state_generators[0](num=len(indices))
-
-            else:
-                raise NotImplementedError
-
-            self._position[indices] = pos
-            self._orientation[indices] = ori
-            self._velocity[indices] = vel
-            self._angular_velocity[indices] = ang_vel
-
-    def compute_spd(self):
-        velocity = self.velocity + g*self.dt
-        angular_velocity = th.zeros((self.num_envs, 3))
-        return velocity, angular_velocity
-
     def reset(self):
-        if self._object_isolated:
-            pos, ori, vel, ang_vel = self.state_generators[0](num=self.num_agent_per_scene)
+        self._t = 0
+        for i in range(len(self._objects_handles)):
+            pos, ori, vel, ang_vel = self._generators[i].safe_generate(num=1)
+            self._positions[i] = pos[0]
+            self._orientations[i] = ori[0]
+            self._target_mgrs[i].reset()
+        self.step()
 
-        else:
-            raise NotImplementedError
-        self._position = pos
-        self._orientation = ori
-        self._velocity = vel
-        self._angular_velocity = ang_vel
+    def step(self):
+        self._t += self.dt
+        for i in range(len(self._objects_handles)):
+            position = self._target_mgrs[i].get_target(t=self._t, dt=self.dt, pos=self._positions[i])
+            self._positions[i] = position
+            # dis = (position-self._positions[i]).norm()
+            # self._positions[i], self._orientations[i] = position, orientation
+            # hab_pos, hab_ori = std_to_habitat(position, orientation)
+            hab_pos, _ = std_to_habitat(position, None)
+            self._objects_handles[i].root_scene_node.translation = mn.Vector3(hab_pos[0])
+            # self._objects_handles[i].root_scene_node.translate(hab_pos[0])
+
+            # obj.root_scene_node.transformation =
+            # obj.scene_node.rotation = mn.Quaternion(mn.Vector3(hab_ori[1:]), hab_ori[0])
 
     @property
     def position(self):
-        return self._position
+        return th.stack(self._positions)
 
     @property
     def orientation(self):
-        return self._orientation
+        return th.tensor(self._orientations)
 
     @property
     def velocity(self):
-        return self._velocity
+        return th.tensor(self._velocity)
 
     @property
     def angular_velocity(self):

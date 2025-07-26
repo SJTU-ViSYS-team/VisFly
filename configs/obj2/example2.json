@@ -1,0 +1,58 @@
+{
+  "objects": [
+    {
+      "name": "object_target",
+      "model_path": "objects2",
+      "initial": {
+        "class": "Uniform",
+        "kwargs": {
+          "position": {
+            "mean": [
+              5.0,
+              0,
+              3
+            ],
+            "half": [
+              0.0,
+              0,
+              0
+            ]
+          },
+          "orientation": {
+            "mean": [
+              0,
+              0,
+              0
+            ],
+            "half": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      },
+      "velocity": {
+        "class": "Uniform",
+        "kwargs": {
+          "mean": 3,
+          "half": 0.0
+        }
+      },
+      "angular_velocity": 0,
+      "path": {
+        "class": "polygon",
+        "comment": "assert in cicular, polygon, rrt",
+        "kwargs": {
+          "points": [
+            [1,3,1.0],
+            [4,3,1.0],
+            [4,-2,1.0],
+            [1,-2,1.0]
+
+          ]
+        }
+      }
+    }
+  ]
+}

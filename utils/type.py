@@ -26,8 +26,8 @@ class Uniform:
             self,
             mean,
             half, ):
-        self.mean = th.as_tensor(mean)
-        self.half = th.as_tensor(half)
+        self.mean = th.atleast_1d(th.as_tensor(mean))
+        self.half = th.atleast_1d(th.as_tensor(half))
 
     def to(self, device):
         self.mean = self.mean.to(device)
@@ -35,7 +35,7 @@ class Uniform:
         return self
 
     def generate(self, size):
-        return (th.rand(size,len(self.mean)) - 0.5) * self.half + self.mean
+        return (th.rand(size, len(self.mean)) - 0.5) * self.half + self.mean
 
 
 class Normal:
@@ -112,13 +112,16 @@ class TensorDict(dict):
 
         return self
 
-    def __getitem__(self, key: Any) -> Any:
+    def __getitem__(self, key: Any, keepdim=False) -> Any:
         if isinstance(key, str):
             return super().__getitem__(key)
         elif isinstance(key, int):
-            return TensorDict({k: v[key] for k, v in self.items()})
+            return TensorDict({k: th.atleast_2d(v[key]) for k, v in self.items()})
         elif hasattr(key, "__iter__"):
-            return TensorDict({k: v[key] for k, v in self.items()})
+            # Convert key to CPU if it's a tensor to avoid device mismatch
+            if hasattr(key, 'cpu'):
+                key = key.cpu()
+            return TensorDict({k: th.atleast_2d(v[key]) for k, v in self.items()})
         else:
             raise TypeError("Invalid key type. Must be either str or int.")
 
@@ -188,4 +191,3 @@ class TensorDict(dict):
         # 生成每个索引对应的字典
         for i in range(first_length):
             yield self[i]
-

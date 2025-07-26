@@ -16,6 +16,14 @@ More tasks (**Tracking**, **Landing**, **Racing**)  involves **BPTT** could be f
 
 We will keep updating this project for more usages.
 
+# Noting!
+1. We will keep updating VisFly for more usages, and the interfaces may be changed. 
+It is hard to comprehensively well maintain all the previous section of the code. 
+Sometimes you will encounter some errors when running the example.
+If you are in a hurry to use VisFly, you could try to reset the git to previous version. 
+Or you can directly tell me via email or Issues on github, and I will fix these issues in next code push.
+
+2. We will primarily update beta branch for more usage, It is hard to maintain main branch, because includes too many immature details to modify one by one. We have added moving objects and their position/collision detection in beta branch. The dataset for beta should be download here [visfly-beta](https://huggingface.co/datasets/LiFanxing/visfly-beta). **In beta branch, we reorganize and upgrade all the files and folders structure to make it more clear to follow.**
 # Installation
 ## Clone the repository
 Clone the repository to local.
@@ -34,13 +42,14 @@ sudo apt-get install libcgal-dev
 ```
 If you encounter any issues, please refer to the official installation steps on the website of [CAGL](https://www.cgal.org/download/linux.html). 
 ## Install modified habitat-sim.
+
 Clone the modified habitat-sim source code:
 ```
 git clone https://github.com/Fanxing-LI/habitat-sim
 cd habitat-sim
 ```
-Then please follow the steps in Section. **Build from Source** in [habitat-sim installation manual](https://github.com/Fanxing-LI/habitat-sim/blob/main/BUILD_FROM_SOURCE.md).
-
+Then please follow the steps in Section. **Build from Source** in [habitat-sim installation manual](https://github.com/Fanxing-LI/habitat-sim/blob/main/BUILD_FROM_SOURCE.md). 
+**Sometimes it raises dependence error while building from source code， and you cannot locate the specific package, maybe it could be solved by firstly installing the original habitatsim to auto install the dependencies.**
 # Quick Start
 ## Download the Datasets for Demo
 Down the dataset from [hugging face](https://huggingface.co/datasets/LiFanxing/VisFly). 
@@ -163,8 +172,8 @@ env = NavigationEnv(
             # "IMU": {
             #     "model": "GaussianNoiseModel", # assert model in ["GaussianNoiseModel", "UniformNoiseModel"]
             #     "kwargs": {
-            #         "mean": 0,
-            #         "std": 0.01,
+            #         "mean": {0,0,...}, # same dim with state
+            #         "std": {0,0,...},
             #     }
             # }
         },

@@ -14,7 +14,7 @@ algorithm:
     optimizer_kwargs:
       weight_decay: 0.00001
     share_features_extractor: False
-  learning_rate: 0.0001
+  learning_rate: 0.001
   horizon: 256
   tau: 0.005
   gamma: 0.99
@@ -28,6 +28,7 @@ env:
     path: VisFly/datasets/spy_datasets/configs/garage_empty
   visual: False
   device: cpu
+  tensor_output: True
 
 learn:
   total_timesteps: 4000000

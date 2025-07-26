@@ -362,6 +362,27 @@ class ObjectGenerator:
         pass
 
 
+def get_files_with_suffix(directory: str, suffix: str) -> list:
+    """
+    Recursively collects all file paths with the specified suffix from the given directory and its subdirectories.
+
+    Args:
+        directory (str): The root directory to search.
+        suffix (str): The file suffix to filter (e.g., '.txt', '.py').
+
+    Returns:
+        list: A list of file paths matching the suffix.
+    """
+    if not os.path.isdir(directory):
+        raise ValueError(f"The provided path '{directory}' is not a valid directory.")
+    file_list = []
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.endswith(suffix):
+                file_list.append(os.path.join(root, file))
+    return file_list
+
+
 class ChildrenPathDataset(Dataset):
     def __init__(self, root_path, type="glb", semantic=False):
         """
@@ -371,30 +392,37 @@ class ChildrenPathDataset(Dataset):
         self.root_path = root_path
         self.type = type
 
-        self.paths = self._load_scene_path(semantic=semantic)
+        self.paths = self._load_scene_path(semantic=semantic, root_path=root_path)
+        if len(self.paths) == 0:
+            # try to correct the root path
+            # cut the path from "datasets"
+            root_path = os.path.abspath(__file__).split("utils")[0]+("/"+self.root_path).split("/VisFly/")[-1]
+            self.paths = self._load_scene_path(semantic=semantic, root_path=root_path)
+        if len(self.paths) == 0:
+            raise FileNotFoundError(f"No files found in the path: {self.root_path}")
 
-    def _load_scene_path(self, semantic=False):
-        if "hm3d" in self.root_path.lower():
+    def _load_scene_path(self, semantic=False, root_path=None):
+        if "hm3d" in root_path.lower():
             # key = "*.basis.glb" if not semantic else "*.semantic.glb"
             key =  "*.semantic.glb"
-        elif "mp3d" in self.root_path.lower():
+        elif "mp3d" in root_path.lower():
             key = "*_semantic.ply"
         elif self.type == "json":
             key = "*.scene_instance.json"
+        elif self.type == "obj":
+            key = "*.json"
 
         glb_files = []
-        for root, dirs, files in os.walk(self.root_path):
+        for root, dirs, files in os.walk(root_path):
             file_path = glob.glob(os.path.join(root, key))
             glb_files.extend(file_path)
 
         if not semantic:
-            if "hm3d" in self.root_path.lower():
+            if "hm3d" in root_path.lower():
                 glb_files = [glb_file[:-13]+glb_file[-4:] for glb_file in glb_files]
-            elif "mp3d" in self.root_path.lower():
+            elif "mp3d" in root_path.lower():
                 glb_files = [glb_file[:-13]+".glb" for glb_file in glb_files]
 
-        if len(glb_files) == 0:
-            raise FileNotFoundError(f"No files found in the path:{self.root_path}")
         return glb_files
 
     def __len__(self):
