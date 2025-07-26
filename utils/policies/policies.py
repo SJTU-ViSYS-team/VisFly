@@ -31,7 +31,7 @@ class MlpExtractor2(MlpExtractor):
             device=device
         )
 
-        self.policy_net = create_mlp(
+        self.policy_net,_ = create_mlp(
             input_dim=pi_features_dim,
             layer=net_arch["pi"],
             activation_fn=activation_fn,
@@ -39,7 +39,7 @@ class MlpExtractor2(MlpExtractor):
             ln=net_arch.get("pi_ln", False),
             squash_output=net_arch.get("squash_output", False)
         )
-        self.value_net = create_mlp(
+        self.value_net,_ = create_mlp(
             input_dim=vf_features_dim,
             layer=net_arch["vf"],
             activation_fn=activation_fn,

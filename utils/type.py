@@ -35,7 +35,7 @@ class Uniform:
         return self
 
     def generate(self, size):
-        return (th.rand(size) - 0.5) * self.half + self.mean
+        return (th.rand(size,len(self.mean)) - 0.5) * self.half + self.mean
 
 
 class Normal:
@@ -188,3 +188,4 @@ class TensorDict(dict):
         # 生成每个索引对应的字典
         for i in range(first_length):
             yield self[i]
+

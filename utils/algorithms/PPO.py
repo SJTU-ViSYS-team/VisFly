@@ -657,7 +657,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 SelfPPO = TypeVar("SelfPPO", bound="PPO")
 
 
-class PPO(OnPolicyAlgorithm):
+class ORI_PPO(OnPolicyAlgorithm):
     """
     Proximal Policy Optimization algorithm (PPO) (clip version)
 
@@ -986,7 +986,7 @@ class PPO(OnPolicyAlgorithm):
         )
 
 
-class ppo(PPO):
+class PPO(ORI_PPO):
     def __init__(self, comment="", save_path=None, *args, **kwargs):
         self.comment = comment
         root = os.path.dirname(os.path.abspath(sys.argv[0]))

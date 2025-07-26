@@ -351,7 +351,7 @@ def set_mlp_feature_extractor(cls, name, observation_space, net_arch, activation
         input_dim = observation_space
     # input_dim = observation_space.shape[0] if len(observation_space.shape) == 1 else observation_space.shape[1]
 
-    net = create_mlp(
+    net, features_dim = create_mlp(
         input_dim=input_dim,
         layer=net_arch.get("layer", []),
         activation_fn=activation_fn,
@@ -361,7 +361,7 @@ def set_mlp_feature_extractor(cls, name, observation_space, net_arch, activation
     setattr(cls, name + "_extractor", net)
     cls._extract_names.append(name)
 
-    features_dim = _get_linear_output(net, observation_space.shape)
+    # features_dim = _get_linear_output(net, observation_space.shape)
     return features_dim
 
 

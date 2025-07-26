@@ -28,6 +28,7 @@ from stable_baselines3.sac.policies import Actor as SAC_Actor
 from stable_baselines3.sac.policies import SACPolicy
 from .extractors import *
 from ..type import TensorDict
+import copy
 
 # CAP the standard deviation of the actor
 LOG_STD_MAX = 2
@@ -108,7 +109,7 @@ class ContinuousCritic(NormalContinuousCritic):
         action_dim = get_action_dim(self.action_space)
         self.q_networks = []
         for idx in range(n_critics):
-            net = create_mlp(input_dim=features_dim + action_dim,
+            net, _ = create_mlp(input_dim=features_dim + action_dim,
                              output_dim=1,
                              activation_fn=activation_fn,
                              layer=net_arch,
@@ -129,7 +130,7 @@ class ContinuousCritic(NormalContinuousCritic):
                 features, h = self.extract_features(obs, self.features_extractor)
             else:
                 features, h = self.extract_features(obs, self.features_extractor), None
-        qvalue_input = th.cat([features, actions], dim=1)
+        qvalue_input = th.cat([features, actions], dim=-1)
         return tuple(q_net(qvalue_input) for q_net in self.q_networks)
 
     def q1_forward(self, obs: th.Tensor, actions: th.Tensor) -> th.Tensor:
@@ -194,7 +195,7 @@ class Actor(SAC_Actor):
         self._squash_output = squash_output
         # Deterministic action
         self.deterministic = deterministic
-        self.latent_pi = create_mlp(input_dim=features_dim, layer=net_arch, activation_fn=activation_fn, squash_output=False, bn=bn, ln=ln)
+        self.latent_pi, output_dim = create_mlp(input_dim=features_dim, layer=net_arch, activation_fn=activation_fn, squash_output=False, bn=bn, ln=ln)
         # self.latent_pi = nn.Flatten()
         self.log_latent_pi = copy.deepcopy(self.latent_pi)
         # self.mu = create_mlp(input_dim=features_dim, layer=net_arch, activation_fn=activation_fn, output_dim=self.action_space.shape[0], squash_output=False)
@@ -246,6 +247,7 @@ class Actor(SAC_Actor):
 
     def action_log_prob(self, obs: PyTorchObs) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         # return action and associated log prob
+        obs = obs_as_tensor(obs, device=self.device)
         mean_actions, log_std, kwargs, h = self.get_action_dist_params(obs)
         return *self.action_dist.log_prob_from_params(mean_actions, log_std, **kwargs), h
 
@@ -314,9 +316,10 @@ class MTDPolicy(SACPolicy):
         self.__squash_output = squash_output
         if isinstance(features_extractor_class, str):
             features_extractor_class = self.features_extractor_alias[features_extractor_class]
-
         if isinstance(activation_fn, str):
             activation_fn = self.activation_fn_alias[activation_fn]
+
+        features_extractor_kwargs["activation_fn"] = activation_fn
 
         super().__init__(
             observation_space=observation_space,
@@ -336,6 +339,8 @@ class MTDPolicy(SACPolicy):
             n_critics=n_critics,
             share_features_extractor=share_features_extractor,
         )
+
+        self.actor_target = copy.deepcopy(self.actor)
 
     def _build(self, lr_schedule: Schedule) -> None:
         super()._build(lr_schedule)

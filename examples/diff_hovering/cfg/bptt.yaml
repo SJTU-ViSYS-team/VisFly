@@ -5,7 +5,7 @@ algorithm:
     features_extractor_kwargs:
       net_arch:
         state:
-          mlp_layer: [192]
+          layer: [192]
 
     net_arch:
       pi: [192, 96]

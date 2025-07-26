@@ -315,7 +315,7 @@ model = PPO(
                 # if use backbone
                 "depth": {  # this name is same with the sensor uuid defined in the environment
                     "backbone": "resnet18",  # assert in ["resnet18", "resnet34", "resnet50", "resnet101", "efficientnet_l", "efficientnet_m", "efficientnet_s", "mobilenet_l", "mobilenet_m", "mobilenet_s"]
-                    "mlp_layer": [128], # the MLP layer after the backbone
+                    "layer": [128], # the MLP layer after the backbone
                 },
                 
                 # if not use backbone
@@ -325,18 +325,18 @@ model = PPO(
                     "padding": [0,0,0],     # the padding of each CNN layer
                     "stride": [1,1,1],      # the stride of each CNN layer
                     "cnn_bn": False,        # Whether to use batch normalization in the CNN
-                    "mlp_layer": [128],     # the MLP layer after the CNN
-                    "bn": False,  # Union[List[Bool], Bool]. The length of list should be equal to the length of mlp_layer if bool. 
+                    "layer": [128],     # the MLP layer after the CNN
+                    "bn": False,  # Union[List[Bool], Bool]. The length of list should be equal to the length of layer if bool. 
                     "ln": False,  # All the bn and ln input format are consistent with this one.
                 },
                 
                 "state": {
-                    "mlp_layer": [128, 64],
+                    "layer": [128, 64],
                     "bn": False,
                     "ln": False,
                 },
                 "target": {
-                    "mlp_layer": [128, 64],
+                    "layer": [128, 64],
                     "bn": False,
                     "ln": False,
                 },

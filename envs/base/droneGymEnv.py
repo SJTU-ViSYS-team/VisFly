@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 import torch as th
 from habitat_sim import SensorType
 from ...utils.type import ACTION_TYPE, TensorDict
-
+from ...utils.common import safe_clone, safe_cpu, safe_detach
 
 class DroneGymEnvsBase(VecEnv):
     def __init__(
@@ -27,12 +27,14 @@ class DroneGymEnvsBase(VecEnv):
             scene_kwargs: Optional[Dict] = None,
             sensor_kwargs: Optional[List] = None,
             tensor_output: bool = False,
-            is_train: bool = False
+            is_train: bool = False,
+            separate_reward: bool = True,
     ):
 
         super(VecEnv, self).__init__()
 
         # raise Warning if device is cuda while num_envs is less than 1e3
+        self.separate_reward = separate_reward
         device = th.device(device)
         if num_agent_per_scene * num_scene < 1e3 and (device.type == 'cuda'):
             _env_device = th.device("cpu")
@@ -148,6 +150,7 @@ class DroneGymEnvsBase(VecEnv):
         self._info = [{"TimeLimit.truncated": False} for _ in range(self.num_agent)]
 
         self._indiv_rewards = None
+        self._indiv_reward = None
         self.max_episode_steps = max_episode_steps
 
         # necessary for gym compatibility
@@ -172,10 +175,13 @@ class DroneGymEnvsBase(VecEnv):
         # update _rewards
         if self._indiv_rewards is None:
             self._reward = self.get_reward()
+
         else:
-            self._reward, indiv_reward = self.get_reward()
-            for key in indiv_reward.keys():
-                self._indiv_rewards[key] += indiv_reward[key]
+            self._indiv_reward = self.get_reward()
+            self._reward = self._indiv_reward["reward"]
+            for key in self._indiv_reward.keys():
+                self._indiv_rewards[key] += self._indiv_reward[key]
+
         self._rewards += self._reward
 
         # update collision, timeout _done
@@ -193,7 +199,7 @@ class DroneGymEnvsBase(VecEnv):
                 self._info[indice] = self.collect_info(indice, self._observations)
 
         # return and auto-reset
-        _done, _reward, _info = self._done.clone(), self._reward.clone(), self._info.copy()
+        _done, _reward, _info = self._done.clone(), safe_clone(self._reward), self._info.copy()
         # _episode_done = self._episode_done.clone()
         # reset all the dead agents
         if self._done.any() and not is_test:
@@ -277,13 +283,13 @@ class DroneGymEnvsBase(VecEnv):
         self._action = self._action.clone().detach()
         self._step_count = self._step_count.clone().detach()
         self._done = self._done.clone().detach()
-        self.latent = self.latent.clone().detach()
+        # self.latent = self.latent.clone().detach()
 
     def reset(self, state=None, obs=None, is_test=False):
         self.envs.reset()
 
-        if isinstance(self.get_reward(), tuple):
-            self._indiv_rewards: dict = self.get_reward()[1]
+        if isinstance(self.get_reward(), dict):
+            self._indiv_rewards: dict = self.get_reward()
             self._indiv_rewards = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
         else:
             self._indiv_rewards = None
@@ -352,6 +358,7 @@ class DroneGymEnvsBase(VecEnv):
         for indice in indices:
             self._info[indice] = {
                 "TimeLimit.truncated": False,
+                "episode_done":False
             }
 
     # def stack(self):

@@ -60,7 +60,7 @@ class Dynamics:
         self.ctrl_dt = ctrl_dt
         if not th.as_tensor(ctrl_dt) % th.as_tensor(dt) == 0:
             raise ValueError("ctrl_dt must be a multiple of dt")
-        if not th.as_tensor(comm_delay) % th.as_tensor(ctrl_dt) == 0:
+        if not int(comm_delay * 1000) % int(ctrl_dt * 1000) == 0:
             import warnings
             warnings.warn("comm_delay should be a multiple of ctrl_dt", UserWarning)
 
@@ -109,6 +109,7 @@ class Dynamics:
         self._thrusts = th.ones((4, self.num), device=self.device) * self._init_thrust  # 电机推力
         self._t = th.zeros((self.num,), device=self.device)
 
+        self._acc = th.zeros((3, self.num), device=self.device)  # 线加速度
         self._angular_acc = th.zeros((3, self.num), device=self.device)
         self._ctrl_i = th.zeros((3, self.num), device=self.device)
         self._pre_action = [
@@ -123,6 +124,8 @@ class Dynamics:
         self._angular_velocity = self._angular_velocity.clone().detach()
         self._motor_omega = self._motor_omega.clone().detach()
         self._thrusts = self._thrusts.clone().detach()
+        self._acc = self._acc.clone().detach()
+        self._angular_acc = self._angular_acc.clone().detach()
 
     def _set_device(self, device):
         self._c = self._c.to(device)
@@ -158,8 +161,11 @@ class Dynamics:
             self._thrusts = th.ones((4, self.num), device=self.device) * self._init_thrust if thrusts is None else thrusts.T
             self._motor_omega = th.ones((4, self.num), device=self.device) * self._init_motor_omega if motor_omega is None else motor_omega.T
             self._t = th.zeros((self.num,), device=self.device) if t is None else t
+            self._t = th.zeros((self.num,), device=self.device) + th.rand((self.num))*3.14*2 if t is None else t
+
             self._ctrl_i = th.zeros((3, self.num), device=self.device)
             self._angular_acc = th.zeros((3, self.num), device=self.device)
+            self._acc = th.zeros((3, self.num), device=self.device)
             self._pre_action = [th.zeros(4, self.num) for _ in range(self._comm_delay_steps)]
 
         else:
@@ -170,8 +176,10 @@ class Dynamics:
             self._motor_omega[:, indices] = th.ones((4, len(indices)), device=self.device) * self._init_motor_omega if motor_omega is None else motor_omega.T
             self._thrusts[:, indices] = th.ones((4, len(indices)), device=self.device) * self._init_thrust if thrusts is None else thrusts.T
             self._t[indices] = th.zeros((len(indices),), device=self.device) if t is None else t
+            self._t[indices] = th.zeros((len(indices),), device=self.device) + th.rand((len(indices),)) * 3.14*2 if t is None else t
             self._ctrl_i[:, indices] = th.zeros((3, len(indices)), device=self.device)
             self._angular_acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
+            self._acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
             for i in range(self._comm_delay_steps):
                 self._pre_action[i][:, indices] = self._pre_action[i][:, indices] * 0
 
@@ -202,6 +210,7 @@ class Dynamics:
             # drag = (linear_drag + quadratic_drag) * th.tensor([[1,1,self.z_drag_coeffs]]).T
             drag = self._drag_coeffs * (self._orientation.inv_rotate(self._velocity - 0).pow(2))
             acceleration = self._orientation.rotate(z * force_torque[0] - drag) / self.m + g
+            self._acc = acceleration
 
             torque = force_torque[1:]
 
@@ -347,7 +356,7 @@ class Dynamics:
             _type_: _description_
         """
         _thrusts = (
-                (self._thrust_map[0] * _motor_omega.pow(2))
+                (self._thrust_map[0] * (_motor_omega+0).pow(2))
                 + self._thrust_map[1] * _motor_omega
                 + self._thrust_map[2]
         )
@@ -564,7 +573,7 @@ class Dynamics:
 
     @property
     def direction(self):
-        return self._orientation.x_axis
+        return self._orientation.x_axis.T
 
     @property
     def velocity(self):

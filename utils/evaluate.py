@@ -62,7 +62,7 @@ class TestBase:
         if self.save_path.endswith((".zip", ".rar", ".pth")):
             self.save_path = self.save_path[:-4]
         self.model = model
-        self.env = env
+        self.env = env if env else self.model.env
         self.name = name
 
         self.obs_all = []
@@ -79,11 +79,11 @@ class TestBase:
             policy=None,
             world=None,
             # model=None,
-            is_fig: bool = False,
-            is_video: bool = False,
-            is_sub_video: bool = False,
-            is_fig_save: bool = False,
-            is_video_save: bool = False,
+            is_fig: bool = True,
+            is_video: bool = True,
+            is_sub_video: bool = True,
+            is_fig_save: bool = True,
+            is_video_save: bool = True,
             render_kwargs={},
             
     ):
