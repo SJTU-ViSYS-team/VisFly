@@ -297,6 +297,7 @@ class DroneGymEnvsBase(VecEnv):
 
         if isinstance(self.get_reward(), dict):
             self._indiv_reward: dict = self.get_reward()
+            self._indiv_rewards: dict = self._indiv_reward
             self._indiv_rewards = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
             self._indiv_reward = {key: th.zeros((self.num_agent,)) for key in self._indiv_rewards.keys()}
         elif isinstance(self.get_reward(), th.Tensor):
@@ -320,13 +321,13 @@ class DroneGymEnvsBase(VecEnv):
         agent_indices = ((np.tile(np.arange(self.num_agent_per_scene), (len(scene_indices), 1))
                           + (scene_indices * self.num_agent_per_scene)).reshape(-1, 1)).flatten()
         self._reset_attr(indices=agent_indices)
-        return self.get_full_observation(agent_indices)
+        return self.get_full_observation()
 
     def reset_agent_by_id(self, agent_indices=None, state=None, reset_obs=None):
         assert ~(state is None and reset_obs is None) or (state is not None and reset_obs is not None)
         assert not isinstance(agent_indices, bool)
         self.envs.reset_agents(agent_indices, state=state)
-        self.get_full_observation(agent_indices)
+        self.get_full_observation()
         self._reset_attr(indices=agent_indices)
         return self._observations
 
@@ -396,7 +397,7 @@ class DroneGymEnvsBase(VecEnv):
         indices = range(self.num_agent) if indices is None else indices
         for indice in indices:
             self._info[indice] = {
-                "TimeLimit.truncated": False,
+                "TimeLimit.truncated": False, "episode_done": False,
             }
 
     # def stack(self):
@@ -453,7 +454,7 @@ class DroneGymEnvsBase(VecEnv):
         }
         return observations
 
-    def get_full_observation(self, indice=None):
+    def get_full_observation(self):
         obs = self.get_observation()
         assert isinstance(obs, TensorDict)
 
@@ -462,10 +463,10 @@ class DroneGymEnvsBase(VecEnv):
             obs.update({"stoch": self.stoch})
 
         self._observations = self._format_obs(obs.as_tensor(device=self.device))
-        if indice is None:
-            return self._observations
-        else:
-            return self._observations[indice]
+        # if indice is None:
+        return self._observations
+        # else:
+        #     return self._observations[indice]
 
     def close(self):
         self.envs.close()
@@ -598,3 +599,16 @@ class DroneGymEnvsBase(VecEnv):
 
     def __len__(self):
         return self.num_envs
+
+    # brief description of the class
+    def __repr__(self):
+        return f"{self.__class__.__name__}(Env={self.envs.__class__},\
+        NumAgentPerScene={self.num_agent_per_scene}, NumScene={self.num_scene}, \
+        tensorOut={self.tensor_output}, RequiresGrad={self.requires_grad})"
+
+    def set_requires_grad(self, requires_grad: bool):
+        """
+        Set whether the environment requires gradient computation.
+        :param requires_grad: (bool) Whether to require gradients
+        """
+        self.requires_grad = requires_grad

@@ -994,6 +994,10 @@ class PPO(ORI_PPO):
         self.policy_save_path = f"{self.save_path}/ppo_{self.comment}" if comment is not None else f"{self.save_path}/ppo"
         kwargs["tensorboard_log"] = self.save_path
         super().__init__(*args, **kwargs)
+        try:
+            self.env.tensor_output= False
+        except AttributeError:
+            pass
 
 
     def learn(

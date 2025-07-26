@@ -531,3 +531,5 @@ class MultiInputPolicy(MTDPolicy):
             bn,
             ln
         )
+
+        self.actor_target = copy.deepcopy(self.actor)
