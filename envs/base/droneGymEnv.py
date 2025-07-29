@@ -149,6 +149,7 @@ class DroneGymEnvsBase(VecEnv):
         # update success _done
         self._success = self.get_success()
         self._failure = self.get_failure()
+        assert self._success.dtype == th.bool and self._failure.dtype == th.bool
 
         # update _rewards
         if self._indiv_reward is None:
@@ -158,7 +159,7 @@ class DroneGymEnvsBase(VecEnv):
             assert isinstance(self._indiv_reward, dict) and "reward" in self._indiv_reward.keys()
             self._reward = self._indiv_reward["reward"]
             for key in self._indiv_reward.keys():
-                self._indiv_rewards[key] += self._indiv_reward[key]
+                self._indiv_rewards[key] += self._indiv_reward[key].detach()
         self._rewards += self._reward
 
         # update collision, timeout _done
@@ -184,12 +185,14 @@ class DroneGymEnvsBase(VecEnv):
             self.examine()
         if self.requires_grad:
             # analytical gradient RL
+            if not self.tensor_output:
+                raise ValueError("requires_grad should be False if tensor_output is False")
             return self._observations, _reward, _done, _info
         else:
             if self.tensor_output:
                 return self._observations.detach(), _reward.detach(), _done, _info
             else:
-                return self._observations, _reward.cpu().numpy(), _done.cpu().numpy(), _info
+                return self._observations, _reward.cpu().numpy(), _done.cpu().numpy().astype(np.int32), _info
 
     @th.no_grad()
     def update_latent(self, latent_func):
@@ -242,15 +245,12 @@ class DroneGymEnvsBase(VecEnv):
 
         return _info
 
-    def initialize_latent(self, deter_dim, stoch_dim, latent_reset_func=None, latent_func=None, world=None):
+    def initialize_latent(self, deter_dim, stoch_dim, world=None):
         self.deter = th.zeros((self.num_agent, deter_dim), device=self.device)
         self.stoch = th.zeros((self.num_agent, stoch_dim), device=self.device)
         self.observation_space["deter"] = spaces.Box(low=-np.inf, high=np.inf, shape=(deter_dim,), dtype=np.float32)
         self.observation_space["stoch"] = spaces.Box(low=-np.inf, high=np.inf, shape=(stoch_dim,), dtype=np.float32)
-        if latent_reset_func:
-            setattr(self, "latent_reset_func", latent_reset_func)
-        if latent_func:
-            setattr(self, "latent_func", latent_func)
+
         if world:
             setattr(self, "world", world)
 
@@ -266,6 +266,9 @@ class DroneGymEnvsBase(VecEnv):
         self._done = self._done.clone().detach()
         if hasattr(self, 'latent'):
             self.latent = self.latent.clone().detach()
+        if self.deter:
+            self.deter = self.deter.clone().detach()
+            self.stoch = self.stoch.clone().detach()
 
     def reset(self, state=None, obs=None, is_test=False):
         self._is_initial = True
@@ -292,11 +295,11 @@ class DroneGymEnvsBase(VecEnv):
 
     def reset_env_by_id(self, scene_indices=None):
         assert not isinstance(scene_indices, bool)
-        scene_indices = scene_indices if scene_indices is not None else th.arange(self.num_scene).tolist()
-        scene_indices = [scene_indices] if not hasattr(scene_indices, "__iter__") else scene_indices
+        scene_indices = scene_indices if scene_indices is not None else th.arange(self.num_scene)
+        scene_indices = th.atleast_1d(scene_indices)
         self.envs.reset_scenes(scene_indices)
-        agent_indices = ((np.tile(np.arange(self.num_agent_per_scene), (len(scene_indices), 1))
-                          + (scene_indices * self.num_agent_per_scene)).reshape(-1, 1)).flatten()
+        agent_indices = ((th.tile(th.arange(self.num_agent_per_scene), (len(scene_indices), 1))
+                          + (scene_indices.unsqueeze(1) * self.num_agent_per_scene)).reshape(-1, 1)).flatten()
         self._reset_attr(indices=agent_indices)
         return self.get_full_observation(agent_indices)
 
@@ -377,20 +380,6 @@ class DroneGymEnvsBase(VecEnv):
                 "TimeLimit.truncated": False, "episode_done": False,
             }
 
-    # def stack(self):
-    #     self._stack_cache = (self._step_count.clone().detach(),
-    #                          self._reward.clone().detach(),
-    #                          self._rewards.clone().detach(),
-    #                          self._done.clone().detach(),
-    #                          deepcopy(self._info),
-    #                          )
-    #     self.envs.stack()
-
-    def recover(self):
-        self._step_count, self._reward, self._rewards, self._done, self._info = \
-            self._stack_cache
-        self.envs.recover()
-
     def examine(self):
         if self._done.any():
             self.reset_agent_by_id(th.where(self._done)[0])
@@ -440,10 +429,7 @@ class DroneGymEnvsBase(VecEnv):
             obs.update({"stoch": self.stoch})
 
         self._observations = self._format_obs(obs.as_tensor(device=self.device))
-        if indice is None:
-            return self._observations
-        else:
-            return self._observations[indice]
+        return self._observations
 
     def close(self):
         self.envs.close()

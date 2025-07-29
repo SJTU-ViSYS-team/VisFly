@@ -194,6 +194,7 @@ class SceneManager(ABC):
             self.render_settings["line_width"] = self.render_settings.get("line_width", 1.0)
             self.render_settings["axes"] = self.render_settings.get("axes", False)
             self.render_settings["trajectory"] = self.render_settings.get("trajectory", False)
+            self.render_settings["velocity"] = self.render_settings.get("velocity", False)
             self.render_settings["sensor_type"] = self.render_settings.get("sensor_type", habitat_sim.SensorType.COLOR)
             self.render_settings["mode"] = self.render_settings.get("mode", "fix")
             self.render_settings["view"] = self.render_settings.get("view", "near")
@@ -536,6 +537,17 @@ class SceneManager(ABC):
             for scene_id in range(self.num_scene):
                 for agent_id in range(self.num_agent_per_scene):
                     for line_id in np.arange(len(self.trajectory[scene_id][agent_id]) - 1):
+                        self._line_mgrs[scene_id].draw_transformed_line(
+                            self.trajectory[scene_id][agent_id][line_id][:3],
+                            self.trajectory[scene_id][agent_id][line_id + 1][:3],
+                            color_consequence(factor=line_id / 10),
+                        )
+
+        if self.render_settings["velocity"]:
+            for scene_id in range(self.num_scene):
+                for agent_id in range(self.num_agent_per_scene):
+                    len_traj = len(self.trajectory[scene_id][agent_id])
+                    for line_id in np.arange(max(len_traj-10, 0), len_traj - 1):
                         self._line_mgrs[scene_id].draw_transformed_line(
                             self.trajectory[scene_id][agent_id][line_id][:3],
                             self.trajectory[scene_id][agent_id][line_id + 1][:3],

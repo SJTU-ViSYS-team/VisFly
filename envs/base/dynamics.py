@@ -461,9 +461,9 @@ class Dynamics:
         thrust_normalize_method = "medium"  # "max_min"
 
         if self.action_type == ACTION_TYPE.BODYRATE:
+            max_bias = 1
             if thrust_normalize_method == "medium":
                 # (_, average_)
-                max_bias = 1
                 thrust_scale = (self.m * -g[2]) / self.m
                 # thrust_scale = (self.m * -g[2]) * 1 / self.m
                 thrust_bias = (self.m * -g[2]) * max_bias / self.m

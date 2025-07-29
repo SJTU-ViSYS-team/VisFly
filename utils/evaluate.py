@@ -184,12 +184,14 @@ class TestBase:
         """
         how to draw the figures
         """
+        self.max_semantic_id = 0
         for image, t, obs in zip(self.render_image_all, self.t, self.obs_all):
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
             cv2.imshow(winname=render_name, mat=image)
             if is_sub_video:
                 for name in self._img_names:
                     if "semantic" in name:
+                        self.max_semantic_id = max(self.max_semantic_id, obs[name].max().item())
                         obs[name] = obs[name]/5
                     cv2.imshow(winname=name,
                                mat=np.hstack(np.transpose(obs[name], (0,2,3,1) ))
@@ -241,6 +243,11 @@ class TestBase:
                         img = img.astype(np.uint8)
                         video_obs[i].write(img)
                         # img = (cv2.cvtColor(img, cv2.COLOR_RGB2BGR)).astype(np.uint8)
+                        video_obs[i].write(img)
+                    elif "semantic" in name:
+                        max_id = self.max_semantic_id
+                        img = np.hstack(np.transpose(obs[name], (0, 2, 3, 1)))
+                        img = (cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)*255/max_id).astype(np.uint8)
                         video_obs[i].write(img)
 
             # save image in cache
