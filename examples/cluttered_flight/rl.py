@@ -8,16 +8,16 @@ import time
 
 sys.path.append(os.getcwd())
 from VisFly.utils.policies import extractors
-from VisFly.utils.algorithms.ppo import ppo
+from VisFly.utils.algorithms.PPO import PPO
 from VisFly.utils import savers
 import torch as th
 from VisFly.envs.NavigationEnv import NavigationEnv
 from VisFly.utils.launcher import rl_parser, training_params
 from VisFly.utils.type import Uniform
-
+from habitat_sim.sensor import SensorType
 args = rl_parser().parse_args()
 """ SAVED HYPERPARAMETERS """
-training_params["num_env"] = 96
+training_params["num_env"] = 48
 training_params["learning_step"] = 1e7
 training_params["comment"] = args.comment
 training_params["max_episode_steps"] = 256
@@ -38,6 +38,31 @@ random_kwargs = {
         }
 }
 
+
+sensor_kwargs = [{
+    "sensor_type": SensorType.DEPTH,
+    "uuid": "depth",
+    "resolution": [64, 64],
+}] 
+random_kwargs = {
+    "state_generator":
+        {
+            "class": "Uniform",
+            "kwargs": [
+                {"position": {"mean": [1., 0., 1.5], "half": [0.0, 2., 1.]}},
+            ]
+        }
+} 
+dynamics_kwargs = {
+    "dt": 0.02,
+    "ctrl_dt": 0.02,
+    "action_type": "bodyrate",
+    "ctrl_delay": True,
+} 
+scene_kwargs = {
+    "path": "VisFly/datasets/spy_datasets/configs/garage_empty"
+} 
+
 # torch.autograd.detect_anomaly()
 # random_kwargs = {}
 
@@ -55,12 +80,14 @@ def main():
                             scene_kwargs={
                                 "path": scene_path,
                             },
+                            dynamics_kwargs=dynamics_kwargs,
+                            sensor_kwargs=sensor_kwargs,
                             )
 
         if args.weight is not None:
-            model = ppo.load(save_folder + args.weight, env=env)
+            model = PPO.load(save_folder + args.weight, env=env)
         else:
-            model = ppo(
+            model = PPO(
                 policy="CustomMultiInputPolicy",
                 policy_kwargs=dict(
                     features_extractor_class=extractors.StateTargetImageExtractor,

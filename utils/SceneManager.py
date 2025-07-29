@@ -322,7 +322,7 @@ class SceneManager(ABC):
                         self.agents[scene_id][agent_id].scene_node.transformation
         self._update_collision_infos()
 
-        if self._obj_mgrs is not None:
+        if self.render_settings is not None or self.is_multi_drone:
             # set the pose of objects or agents in the scene
             for scene_id in range(self.num_scene):
                 for agent_id in range(self.num_agent_per_scene):

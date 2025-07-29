@@ -14,6 +14,7 @@ import torch as th
 from VisFly.envs.MultiNavigationEnv import MultiNavigationEnv
 from VisFly.utils.launcher import rl_parser, training_params
 from VisFly.utils.type import Uniform
+from habitat_sim.sensor import SensorType
 
 args = rl_parser().parse_args()
 """ SAVED HYPERPARAMETERS """
@@ -39,7 +40,18 @@ random_kwargs = {
         }
 }
 
+sensor_kwargs = [{
+    "sensor_type": SensorType.DEPTH,
+    "uuid": "depth",
+    "resolution": [64, 64],
+}] 
 
+dynamics_kwargs = {
+    "dt": 0.02,
+    "ctrl_dt": 0.02,
+    "action_type": "bodyrate",
+    "ctrl_delay": True,
+} 
 
 def main():
     # if train mode, train the model
@@ -52,6 +64,8 @@ def main():
                                  scene_kwargs={
                                      "path": scene_path,
                                  },
+                                 dynamics_kwargs=dynamics_kwargs,
+                                 sensor_kwargs=sensor_kwargs,
                                  )
 
         if args.weight is not None:
