@@ -181,7 +181,10 @@ class TargetUniformRandomizer(UniformStateRandomizer):
         direction = target_position.unsqueeze(0)-position
         yaw, pitch = calculate_yaw_pitch(direction)
         orientation = th.stack([th.zeros(num), pitch*0, yaw], dim=1) + (2 * th.rand(num, 3) - 1) * self.orientation.half # yaw, pitch, roll
-        velocity = (2 * th.rand(num, 3) - 1) * self.velocity.half + self.velocity.mean
+        if "velocity" in kwargs.keys():
+            velocity = th.tile(kwargs["velocity"].unsqueeze(0), (num, 1))
+        else:
+            velocity = (2 * th.rand(num, 3) - 1) * self.velocity.half + self.velocity.mean
         angular_velocity = (2 * th.rand(num, 3) - 1) * self.angular_velocity.half + self.angular_velocity.mean
 
         return position, orientation, velocity, angular_velocity
