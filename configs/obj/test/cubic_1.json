@@ -2,7 +2,7 @@
   "objects": [
     {
       "name": "object_target",
-      "model_path": "ball",
+      "model_path": "cup",
       "initial": {
         "class": "Uniform",
         "kwargs": {

@@ -46,6 +46,7 @@ class Path:
             self.current_arc_length = 0.0
 
         self.pre_pos = copy.deepcopy(self.position)
+        # self.pre_v = th.zeros_like(self.pre_pos)
 
     def _setup_cubic_spline(self):
         """设置cubic spline插值，使用弧长参数化确保均匀速度"""
@@ -93,7 +94,12 @@ class Path:
         return f"ObjectManager(type={self.cls})"
 
     def get_velocity(self, t, pos, dt):
+        self.pre_v = self.velocity.clone()
+        self.velocity = (self.position - self.pre_pos)/dt
         return (self.position - self.pre_pos)/dt
+
+    def get_acceleration(self, t, pos, dt):
+        return (self.velocity - self.pre_v)/dt
 
     def get_target(self, t, pos, dt):
         self.pre_pos = copy.deepcopy(self.position)
@@ -182,6 +188,7 @@ class ObjectManager:
 
         self._positions = [None for _ in range(len(objs_setting))]
         self._velocities = [None for _ in range(len(objs_setting))]
+        self._accelerations = [None for _ in range(len(objs_setting))]  # assuming constant gravity
         self._orientations = [None for _ in range(len(objs_setting))]
 
         self._objects_handles = []
@@ -229,6 +236,7 @@ class ObjectManager:
             position = self._target_mgrs[i].get_target(t=self._t, dt=self.dt, pos=self._positions[i])
             self._positions[i] = position
             self._velocities[i] = self._target_mgrs[i].get_velocity(t=self._t, dt=self.dt, pos=self._positions[i])
+            self._accelerations[i] = self._target_mgrs[i].get_acceleration(t=self._t, dt=self.dt, pos=self._positions[i])
             # dis = (position-self._positions[i]).norm()
             # self._positions[i], self._orientations[i] = position, orientation
             # hab_pos, hab_ori = std_to_habitat(position, orientation)
@@ -250,6 +258,10 @@ class ObjectManager:
     @property
     def velocity(self):
         return th.vstack(self._velocities)
+
+    @property
+    def acceleration(self):
+        return th.vstack(self._accelerations)
 
     @property
     def angular_velocity(self):

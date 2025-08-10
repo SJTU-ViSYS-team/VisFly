@@ -182,15 +182,15 @@ class DroneEnvsBase:
             stateGenerators = []
             if len(generator_kwargs) == 1:
                 for i in range(self.sceneManager.num_scene):
+                    generator = load_generator(
+                        cls=state_generator_class,
+                        device=self.device,
+                        is_collision_func=self.sceneManager.get_point_is_collision,
+                        scene_id=i,
+                        kwargs=generator_kwargs[0]
+                    )
                     for j in range(self.sceneManager.num_agent_per_scene):
-                        stateGenerators.append(load_generator(
-                            cls=state_generator_class,
-                            device=self.device,
-                            is_collision_func=self.sceneManager.get_point_is_collision,
-                            scene_id=i,
-                            kwargs=generator_kwargs[0]
-                        )
-                        )
+                        stateGenerators.append(generator)
             elif len(generator_kwargs) == self.sceneManager.num_scene:
                 for i in range(self.sceneManager.num_scene):
                     for j in range(len(generator_kwargs)):
@@ -483,5 +483,12 @@ class DroneEnvsBase:
     def dynamic_object_velocity(self):
         if self.sceneManager:
             return self.sceneManager.dynamic_object_velocity
+        else:
+            return [[None] for _ in range(self.dynamics.num)]
+
+    @property
+    def dynamic_object_acceleration(self):
+        if self.sceneManager:
+            return self.sceneManager.dynamic_object_acceleration
         else:
             return [[None] for _ in range(self.dynamics.num)]

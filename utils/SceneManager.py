@@ -129,11 +129,7 @@ class SceneManager(ABC):
             }
 
         if sensor_settings is None:
-            sensor_settings = [{
-                "sensor_type": habitat_sim.SensorType.DEPTH,
-                "uuid": "depth",
-                "resolution": [64, 64],
-            }]
+            sensor_settings = []
 
         self._get_datasets_info(path)
         self.root_path = path
@@ -166,6 +162,7 @@ class SceneManager(ABC):
             self._obj_loader = _objLoader
         self.dynamic_object_position = [[None] for _ in range(num_agent_per_scene*num_scene)]
         self.dynamic_object_velocity = [[None] for _ in range(num_agent_per_scene*num_scene)]
+        self.dynamic_object_acceleration = [[None] for _ in range(num_agent_per_scene*num_scene)]
 
         self.scenes: List[habitat_sim.scene] = [None for _ in range(num_scene)]
         self.agents: List[List[habitat_sim.agent]] = [[] for _ in range(num_scene)]
@@ -948,6 +945,7 @@ class SceneManager(ABC):
     def _update_dynamics(self):
         self.dynamic_object_position = [obj_ctrl.position for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
         self.dynamic_object_velocity = [obj_ctrl.velocity for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
+        self.dynamic_object_acceleration = [obj_ctrl.acceleration for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
     # @property
     # def dynamic_object_position(self):
     #     if self.obj_settings:

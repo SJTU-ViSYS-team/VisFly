@@ -109,8 +109,10 @@ class DroneGymEnvsBase(VecEnv):
             self.action_space = spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
         elif self.envs.dynamics.action_type == ACTION_TYPE.VELOCITY:
             self.action_space = spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
+        elif self.envs.dynamics.action_type == ACTION_TYPE.POSITION:
+            self.action_space = spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
         else:
-            raise ValueError("action_type should be one of ['bodyrate', 'thrust', 'velocity']")
+            raise ValueError("action_type should be one of ['bodyrate', 'thrust', 'velocity', 'position'], but got {}".format(self.envs.dynamics.action_type))
 
         self._step_count = th.zeros((self.num_agent,), dtype=th.int32)
         self._reward = th.zeros((self.num_agent,))

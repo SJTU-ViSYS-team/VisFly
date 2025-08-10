@@ -190,12 +190,21 @@ class TestBase:
             cv2.imshow(winname=render_name, mat=image)
             if is_sub_video:
                 for name in self._img_names:
+                    sub_obs = np.hstack(np.transpose(obs[name], (0,2,3,1)))
                     if "semantic" in name:
-                        self.max_semantic_id = max(self.max_semantic_id, obs[name].max().item())
-                        obs[name] = obs[name]/5
-                    cv2.imshow(winname=name,
-                               mat=np.hstack(np.transpose(obs[name], (0,2,3,1) ))
-                               )
+                        self.max_semantic_id = max(self.max_semantic_id, sub_obs.max().item())
+                        sub_obs = sub_obs/10
+                    if "depth" in name:
+                        sub_obs= sub_obs/10
+                    if "color" in name:
+                        sub_obs = cv2.cvtColor(sub_obs.astype(np.uint8), cv2.COLOR_RGB2BGR)
+                        pass
+                    cv2.imshow(winname=name,mat=sub_obs)
+                    # if "depth" in name:
+                    #     obs[name] = np.clip(obs[name], None, 10)
+                    #     obs[name] = (cv2.cvtColor(obs[name], cv2.COLOR_GRAY2RGB) * 255 / 10).astype(np.uint8)
+                    #     cv2.imshow(winname=name,
+                    #                mat=np.hstack(np.transpose(obs[name], (0, 2, 3, 1))))
             cv2.waitKey(int(self.env.envs.dynamics.ctrl_dt * 1000))
 
     def save_fig(self, fig, path=None, c=""):
