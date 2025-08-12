@@ -6,8 +6,9 @@ import numpy as np
 
 env = HoverEnv(
     num_scene=1,
-    num_agent_per_scene=4,
+    num_agent_per_scene=5,
     visual=True,
+    max_episode_steps=100000,
     dynamics_kwargs={
         "action_type": "position",
     },
@@ -29,8 +30,8 @@ env = HoverEnv(
         "render_settings":{
             "mode": "fix",
             "view": "custom",
-            "resolution": [1920, 1080],
-            "position":[[6., 5.5, 8.5], [6, 6, 1.5]],
+            "resolution": [1080,1920 ],
+            "position":[[4.,4.5, 8.5], [4, 4, 1.5]],
             "trajectory": True,
             "axes": True
         }
@@ -84,23 +85,20 @@ pos = th.stack(pos, dim=0)
 import matplotlib.pyplot as plt
 
 plt.figure(figsize=(10, 6))
-axeses = plt.subplots(3, 1)
 t = th.stack(t, dim=0)[:,0]
 plt.subplot(3, 1, 1)
-plt.plot(t, pos[..., 0].cpu().numpy(), label='X Position')
+plt.plot(t, pos[:,:, 0].cpu().numpy(), label='X Position')
 plt.xlabel('Time')
 plt.ylabel('X Position')
-plt.legend()
-# plt.subplot(3, 1, 2)
-# plt.plot(t, pos[..., 1].cpu().numpy(), label='Y Position')
-# plt.xlabel('Time')
-# plt.ylabel('Y Position')
-# plt.legend()
-# plt.subplot(3, 1, 3)
-# plt.plot(t, pos[..., 2].cpu().numpy(), label='Z Position')
-# plt.xlabel('Time')
-# plt.ylabel('Z Position')
-# plt.legend()
+
+plt.subplot(3, 1, 2)
+plt.plot(t, pos[..., 1].cpu().numpy(), label='Y Position')
+plt.xlabel('Time')
+plt.ylabel('Y Position')
+plt.subplot(3, 1, 3)
+plt.plot(t, pos[..., 2].cpu().numpy(), label='Z Position')
+plt.xlabel('Time')
+plt.ylabel('Z Position')
 plt.tight_layout()
 plt.show()
 

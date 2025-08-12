@@ -157,7 +157,7 @@ class SceneManager(ABC):
         if obj_settings:
             obj_path = self.obj_settings.get("path", "static")
             _objLoader = SimpleDataLoader(
-                ChildrenPathDataset(f"VisFly/configs/obj/{obj_path}", type='obj', semantic=False), batch_size=num_scene, shuffle=True
+                ChildrenPathDataset(obj_path, type='obj', semantic=False), batch_size=num_scene, shuffle=True
             )
             self._obj_loader = _objLoader
         self.dynamic_object_position = [[None] for _ in range(num_agent_per_scene*num_scene)]

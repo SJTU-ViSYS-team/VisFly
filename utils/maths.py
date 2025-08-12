@@ -63,6 +63,27 @@ class Quaternion:
         y = th.zeros_like(w)
         return Quaternion(w, x, y, z)
 
+    def extract_pitch_roll(self):
+        """
+        提取当前四元数中只保留 pitch 和 roll 的部分，返回一个新的 Quaternion 实例。
+        """
+        # pitch = atan2(2(wx + yz), 1 - 2(x² + z²))
+        # roll = atan2(2(wy - xz), 1 - 2(y² + z²))
+        pitch = th.atan2(2 * (self.w * self.y + self.x * self.z),
+                         1 - 2 * (self.x ** 2 + self.z ** 2))
+        roll = th.atan2(2 * (self.w * self.x - self.y * self.z),
+                        1 - 2 * (self.y ** 2 + self.z ** 2))
+
+        half_pitch = pitch / 2
+        half_roll = roll / 2
+
+        w = th.cos(half_pitch) * th.cos(half_roll)
+        x = th.sin(half_roll) * th.cos(half_pitch)
+        y = th.sin(half_pitch) * th.cos(half_roll)
+        z = th.sin(half_pitch) * th.sin(half_roll)
+
+        return Quaternion(w, x, y, z)
+
     def world_to_head(self, vec: th.Tensor) -> th.Tensor:
         """
         将世界坐标系中的向量 vec 投影到当前四元数定义的航迹坐标系下（仅考虑 yaw）

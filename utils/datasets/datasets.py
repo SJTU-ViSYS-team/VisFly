@@ -403,6 +403,10 @@ class ChildrenPathDataset(Dataset):
 
         self.paths = self._load_scene_path(semantic=semantic, root_path=root_path)
         if len(self.paths) == 0:
+            if type == "obj":
+                root_path = f"VisFly/configs/obj/{root_path}"
+                self.paths = self._load_scene_path(semantic=semantic, root_path=root_path)
+        if len(self.paths) == 0:
             # try to correct the root path
             # cut the path from "datasets"
             root_path = os.path.abspath(__file__).split("utils")[0]+("/"+self.root_path).split("/VisFly/")[-1]
@@ -410,6 +414,7 @@ class ChildrenPathDataset(Dataset):
         if len(self.paths) == 0:
             import sys
             folder_path = os.path.dirname(os.path.abspath(sys.argv[0]))+"/"
+            print(f"Warning: No files found in the VisFly object path, trying to find in local path: \n{folder_path}.")
             root_path = folder_path+("/"+self.root_path).split("/VisFly/")[-1]
             self.paths = self._load_scene_path(semantic=semantic, root_path=root_path)
         if len(self.paths) == 0:

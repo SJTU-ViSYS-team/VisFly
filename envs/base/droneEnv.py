@@ -125,7 +125,7 @@ class DroneEnvsBase:
 
     def _create_bbox(self):
         if not self.visual:
-            bboxes = [th.tensor([[-25., -10., 0.], [25., 10., 8.]]).to(self.device)]
+            bboxes = [th.tensor([[-30., -20., 0.], [30., 20., 8.]]).to(self.device)]
         # else:
         #     bboxes = []
         #     if self.sceneManager.scenes[0] is None:

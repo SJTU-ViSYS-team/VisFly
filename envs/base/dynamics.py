@@ -294,12 +294,26 @@ class Dynamics:
             a_des = self._VELOCITY_PID.p * (command[1:] - self._velocity)
             F_des = self.m * (a_des - g)  # world axis
 
-            yaw_spd_des = (self._orientation.toEuler()[2] - command[0]) * self._VELOCITY_PID.p
+            # Auto yaw control - make drone face velocity direction
+            velocity_horizontal = self._velocity[:2, :]  # Get x,y components
+            velocity_norm = velocity_horizontal.norm(dim=0)
+            # Only update yaw when there's significant horizontal movement
+            yaw_des = th.where(
+                velocity_norm > 0.1,  # threshold to avoid jitter when stationary
+                th.atan2(velocity_horizontal[1], velocity_horizontal[0]),
+                self._orientation.toEuler()[2]  # keep current yaw when stationary
+            )
+
+            current_yaw = self._orientation.toEuler()[2]
+            yaw_error = yaw_des - current_yaw
+            # Handle yaw angle wrapping (keep error in [-π, π])
+            yaw_error = th.atan2(th.sin(yaw_error), th.cos(yaw_error))
+            yaw_spd_des = yaw_error * self._VELOCITY_PID.d * 2.0  # Gain for yaw tracking
 
             gross_thrust_des = self._orientation.transform(F_des)[2]
             R = self._orientation.R
             b3_des = F_des / F_des.norm(dim=0)
-            c1_des = th.cat([command[0].cos(), command[0].sin(), th.zeros_like(command[0])])
+            c1_des = th.stack([yaw_des.cos(), yaw_des.sin(), th.zeros_like(yaw_des)], dim=0)
             b2_des = cross(b3_des, c1_des)
             b2_des = b2_des / b2_des.norm(dim=0)
             b1_des = cross(b2_des, b3_des)
@@ -315,19 +329,32 @@ class Dynamics:
             body_torque_des = self._inertia @ (self._BODYRATE_PID.p @ pose_err + self._BODYRATE_PID.p @ ang_vel_err - cross(self._angular_velocity, self._angular_velocity))
 
             thrusts_des = self._B_allocation_inv @ th.vstack([gross_thrust_des, body_torque_des])
-            # raise NotImplementedError
         elif self.action_type == ACTION_TYPE.POSITION:
             command = command.T
             v_des = self._POSITION_PID.d * (command[1:] - self._position)
             a_des = self._VELOCITY_PID.d * (v_des - self._velocity)
             F_des = self.m * (a_des - g)  # world axis
 
-            yaw_spd_des = (self._orientation.toEuler()[2] - command[0]) * self._POSITION_PID.d
+            # Auto yaw control - make drone face desired velocity direction
+            v_des_horizontal = v_des[:2, :]  # Get x,y components of desired velocity
+            v_des_norm = v_des_horizontal.norm(dim=0)
+            # Only update yaw when there's significant desired horizontal movement
+            yaw_des = th.where(
+                v_des_norm > 0.1,  # threshold to avoid jitter when stationary
+                th.atan2(v_des_horizontal[1], v_des_horizontal[0]),
+                self._orientation.toEuler()[2]  # keep current yaw when stationary
+            )
+
+            current_yaw = self._orientation.toEuler()[2]
+            yaw_error = yaw_des - current_yaw
+            # Handle yaw angle wrapping (keep error in [-π, π])
+            yaw_error = th.atan2(th.sin(yaw_error), th.cos(yaw_error))
+            yaw_spd_des = yaw_error * self._POSITION_PID.d * 2.0
 
             gross_thrust_des = self._orientation.transform(F_des)[2]
             R = self._orientation.R
             b3_des = F_des / F_des.norm(dim=0)
-            c1_des = th.cat([command[0].cos(), command[0].sin(), th.zeros_like(command[0])])
+            c1_des = th.stack([yaw_des.cos(), yaw_des.sin(), th.zeros_like(yaw_des)], dim=0)
             b2_des = cross(b3_des, c1_des)
             b2_des = b2_des / b2_des.norm(dim=0)
             b1_des = cross(b2_des, b3_des)
@@ -339,8 +366,16 @@ class Dynamics:
                 m = 0.5 * (R_des[..., i].T @ R[..., i] - R[..., i].T @ R_des[..., i])
                 pose_err[:, i] = -th.as_tensor([-m[1, 2], m[0, 2], -m[0, 1]], device=self.device)
 
-                ang_vel_err[:, i] = (R_des[..., i].T @ R[..., i] @ th.tensor([[0], [0], [yaw_spd_des[i]]], device=self.device).squeeze() - self._angular_velocity[:, i])
-            body_torque_des = self._inertia @ (self._BODYRATE_PID.p @ pose_err + self._BODYRATE_PID.p @ ang_vel_err - cross(self._angular_velocity, self._angular_velocity))
+                ang_vel_err[:, i] = (
+                                        R_des[..., i].T @ R[..., i] @ th.tensor([[0], [0], [yaw_spd_des[i]]], device=self.device).squeeze()
+                                        - self._angular_velocity[:, i]
+                                     )
+            body_torque_des = self._inertia @ (
+                    self._BODYRATE_PID.p @ pose_err
+                    + 1.2 * self._BODYRATE_PID.p @ ang_vel_err
+                    - self._BODYRATE_PID.d @ self._angular_acc
+                    - cross(self._angular_velocity, self._inertia @ self._angular_velocity)
+            )
 
             thrusts_des = self._B_allocation_inv @ th.vstack([gross_thrust_des, body_torque_des])
             # raise NotImplementedError
@@ -568,11 +603,15 @@ class Dynamics:
             return command
 
         elif self.action_type == ACTION_TYPE.POSITION:
+            # Remove manual yaw control from command normalization
+            # Now position commands only contain [x, y, z] without yaw
+            yaw = th.arccos(self.velocity[:,0] / (1e-6+self.velocity[:,:2].norm(dim=1))).unsqueeze(1) \
+                  * th.sign(self.velocity[:,1]).unsqueeze(1)
+
             command = th.hstack([
-                command[:, :1] * self._normal_params["yaw"].half + self._normal_params["yaw"].mean,
+                yaw,  # This will be ignored in the control logic above
                 command[:, 1:] * self._normal_params["velocity"].half + self._normal_params["velocity"].mean
-            ]
-            )
+            ])
             return command
 
         else:

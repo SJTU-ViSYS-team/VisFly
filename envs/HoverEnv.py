@@ -38,7 +38,7 @@ class HoverEnv(DroneGymEnvsBase):
                         {"position": {"mean": [1., 0., 1.5], "half": [1.0, 1.0, 0.5]}},
                     ]
                 }
-        }
+        } if random_kwargs is None else random_kwargs
 
         super().__init__(
             num_agent_per_scene=num_agent_per_scene,
@@ -146,7 +146,7 @@ class HoverEnv2(HoverEnv):
 
         return TensorDict({
             "state": state,
-            "depth": th.as_tensor(self.sensor_obs["depth"]/10).clamp(max=1)
+            # "depth": th.as_tensor(self.sensor_obs["depth"]/10).clamp(max=1)
         })
 
 
