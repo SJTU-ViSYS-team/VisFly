@@ -220,9 +220,12 @@ class DroneGymEnvsBase(VecEnv):
         else:
             _info["is_success"] = False
 
+        l = self._step_count[indice].cpu().clone().detach().numpy()
+        if l <= 2:
+            Warning("The length of the episode is too short, check the initial state randomization.")
         _info["episode"] = {
             "r": self._rewards[indice].cpu().clone().detach().numpy(),
-            "l": self._step_count[indice].cpu().clone().detach().numpy(),
+            "l": l,
             "t": (self._step_count[indice] * self.envs.dynamics.ctrl_dt).cpu().clone().detach().numpy(),
         }
         if self.requires_grad:
@@ -515,6 +518,14 @@ class DroneGymEnvsBase(VecEnv):
     @property
     def full_state(self):
         return self.envs.full_state
+
+    @property
+    def dynamic_object_position(self):
+        """
+        Get the position of dynamic objects in the environment.
+        :return: (Tensor) Position of dynamic objects, shape (num_envs, num_dynamic_objects, 3)
+        """
+        return self.envs.dynamic_object_position
 
     def env_is_wrapped(self):
         return False

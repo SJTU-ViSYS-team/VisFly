@@ -335,19 +335,13 @@ class Dynamics:
             a_des = self._VELOCITY_PID.d * (v_des - self._velocity)
             F_des = self.m * (a_des - g)  # world axis
 
-            # Auto yaw control - make drone face desired velocity direction
-            v_des_horizontal = v_des[:2, :]  # Get x,y components of desired velocity
-            v_des_norm = v_des_horizontal.norm(dim=0)
-            # Only update yaw when there's significant desired horizontal movement
-            yaw_des = th.where(
-                v_des_norm > 0.1,  # threshold to avoid jitter when stationary
-                th.atan2(v_des_horizontal[1], v_des_horizontal[0]),
-                self._orientation.toEuler()[2]  # keep current yaw when stationary
-            )
+            # Use command[0] as desired yaw angle instead of auto yaw control
+            yaw_des = command[0]  # Direct yaw control from command input
 
             current_yaw = self._orientation.toEuler()[2]
             yaw_error = yaw_des - current_yaw
             # Handle yaw angle wrapping (keep error in [-π, π])
+            # 确保角度误差在最短路径上，处理角度环绕问题
             yaw_error = th.atan2(th.sin(yaw_error), th.cos(yaw_error))
             yaw_spd_des = yaw_error * self._POSITION_PID.d * 2.0
 
@@ -564,7 +558,7 @@ class Dynamics:
             yaw_bias = th.pi - yaw_scale * normal_range[1]
             self._normal_params = {
                 "velocity": Uniform(mean=pos_bias, half=pos_scale).to(self.device),
-                "yaw": Uniform(mean=yaw_bias, half=yaw_bias).to(self.device),
+                "yaw": Uniform(mean=yaw_bias, half=yaw_scale).to(self.device),
             }
 
         else:
@@ -603,14 +597,10 @@ class Dynamics:
             return command
 
         elif self.action_type == ACTION_TYPE.POSITION:
-            # Remove manual yaw control from command normalization
-            # Now position commands only contain [x, y, z] without yaw
-            yaw = th.arccos(self.velocity[:,0] / (1e-6+self.velocity[:,:2].norm(dim=1))).unsqueeze(1) \
-                  * th.sign(self.velocity[:,1]).unsqueeze(1)
-
+            # Now position commands contain [yaw, x, y, z] with direct yaw control
             command = th.hstack([
-                yaw,  # This will be ignored in the control logic above
-                command[:, 1:] * self._normal_params["velocity"].half + self._normal_params["velocity"].mean
+                command[:, :1] * self._normal_params["yaw"].half + self._normal_params["yaw"].mean,  # yaw angle
+                command[:, 1:] * self._normal_params["velocity"].half + self._normal_params["velocity"].mean  # position x,y,z
             ])
             return command
 

@@ -73,6 +73,8 @@ class TestBase:
         self.render_image_all = []
         self.reward_all = []
         self.t = []
+        self.max_semantic_id = 1e-6
+
 
     def test(
             self,
@@ -184,7 +186,6 @@ class TestBase:
         """
         how to draw the figures
         """
-        self.max_semantic_id = 0
         for image, t, obs in zip(self.render_image_all, self.t, self.obs_all):
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
             cv2.imshow(winname=render_name, mat=image)

@@ -56,7 +56,7 @@ current_target_index = th.zeros((num_agent,), dtype=int)
 current_target = points[current_target_index]
 
 pos_action = current_target / 10
-action = th.hstack([th.zeros((num_agent, 1)),pos_action])
+action = th.hstack([th.arange(num_agent).unsqueeze(1)/4-1,pos_action])
 
 pos = []
 t = []
@@ -69,7 +69,7 @@ for i in range(total_steps):
             current_target_index[j] = (current_target_index[j] + 1) % points.shape[0]
             current_target[j] = points[current_target_index[j]]
     pos_action = current_target / 10
-    action = th.hstack([th.zeros((num_agent, 1)),pos_action])
+    action = th.hstack([(current_target_index.unsqueeze(1) * th.ones((num_agent, 1)))/2-1,pos_action])
 
     pos.append(env.position.clone())
     t.append(env.envs.t.clone())
