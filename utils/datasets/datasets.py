@@ -404,7 +404,7 @@ class ChildrenPathDataset(Dataset):
         self.paths = self._load_scene_path(semantic=semantic, root_path=root_path)
         if len(self.paths) == 0:
             if type == "obj":
-                root_path = f"VisFly/configs/obj/{root_path}"
+                root_path = os.path.abspath(__file__).split("utils")[0] + f"configs/obj/{root_path}"
                 self.paths = self._load_scene_path(semantic=semantic, root_path=root_path)
         if len(self.paths) == 0:
             # try to correct the root path

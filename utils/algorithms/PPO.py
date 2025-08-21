@@ -1,22 +1,8 @@
-# from stable_baselines3 import PPO
-import warnings
-from abc import ABC, abstractmethod
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+import io
+import pathlib
 
-import numpy as np
-import torch as th
-from gymnasium import spaces
-
-from stable_baselines3.common.preprocessing import get_action_dim, get_obs_shape
-from stable_baselines3.common.type_aliases import (
-    DictReplayBufferSamples,
-    DictRolloutBufferSamples,
-    ReplayBufferSamples,
-    RolloutBufferSamples, TensorDict,
-)
-from stable_baselines3.common.utils import get_device
-from stable_baselines3.common.vec_env import VecNormalize
-
+from stable_baselines3.common.save_util import load_from_zip_file, recursive_setattr
+from stable_baselines3.common.utils import safe_mean
 from tqdm import tqdm
 import os
 
@@ -27,23 +13,15 @@ except ImportError:
     psutil = None
 
 import warnings
-from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
-from stable_baselines3.common.base_class import BaseAlgorithm
-import numpy as np
-import torch as th
-from gymnasium import spaces
+from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union, Iterable
 from torch.nn import functional as F
 
-from stable_baselines3.common.buffers import RolloutBuffer
-from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import (
     ActorCriticCnnPolicy,
     ActorCriticPolicy,
     BasePolicy,
     MultiInputActorCriticPolicy,
 )
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from stable_baselines3.common.utils import explained_variance, get_schedule_fn
 
 import sys
 import time
@@ -53,17 +31,16 @@ import numpy as np
 import torch as th
 from gymnasium import spaces
 
-from stable_baselines3.common.base_class import BaseAlgorithm
-from stable_baselines3.common.buffers import DictRolloutBuffer, BaseBuffer
-from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.policies import ActorCriticPolicy
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from stable_baselines3.common.utils import safe_mean
-from stable_baselines3.common.vec_env import VecEnv
-
-SelfOnPolicyAlgorithm = TypeVar("SelfOnPolicyAlgorithm", bound="OnPolicyAlgorithm")
+from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, TrainFreq, TrainFrequencyUnit
 
 from stable_baselines3.common.preprocessing import check_for_nested_spaces, is_image_space, is_image_space_channels_first
+from stable_baselines3.common.env_util import is_wrapped
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env.patch_gym import _convert_space, _patch_env
+from ..policies.policies import CustomMultiInputActorCriticPolicy
+from stable_baselines3.ppo.ppo import PPO as ori_PPO
+from tqdm import tqdm
 
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
@@ -74,12 +51,7 @@ from stable_baselines3.common.vec_env import (
     unwrap_vec_normalize,
 )
 
-from stable_baselines3.common.env_util import is_wrapped
-from stable_baselines3.common.logger import Logger
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env.patch_gym import _convert_space, _patch_env
-from ..policies.policies import CustomMultiInputActorCriticPolicy
-from stable_baselines3.ppo.ppo import PPO as ori_PPO
+
 
 SelfPPO = TypeVar("SelfPPO", bound="PPO")
 
@@ -91,11 +63,17 @@ class PPO(ori_PPO):
         "MultiInputPolicy": MultiInputActorCriticPolicy,
         "CustomMultiInputPolicy": CustomMultiInputActorCriticPolicy,
     }
-    def __init__(self, comment="", save_path=None, *args, **kwargs):
+
+    def __init__(self, comment="", save_path=None, scene_freq=None, *args, **kwargs):
         self.comment = comment
+        self.scene_freq = scene_freq
+        if self.scene_freq and not isinstance(self.scene_freq, TrainFreq):
+            Warning(f"scene_freq should be a TrainFreq, got {self.scene_freq}, converting to TrainFreq(1000000, TrainFrequencyUnit.STEP)")
+            self.scene_freq = TrainFreq(self.scene_freq, TrainFrequencyUnit.STEP)
+
         root = os.path.dirname(os.path.abspath(sys.argv[0]))
         self.save_path = f"{root}/saved" if save_path is None else save_path
-        self.policy_save_path = f"{self.save_path}/ppo_{self.comment}" if comment is not None else f"{self.save_path}/ppo"
+        self.policy_save_path = f"{self.save_path}/PPO_{self.comment}" if comment is not None else f"{self.save_path}/ppo"
         kwargs["tensorboard_log"] = self.save_path
         super().__init__(*args, **kwargs)
         try:
@@ -107,28 +85,80 @@ class PPO(ori_PPO):
                 "This may cause issues if the environment expects tensor outputs."
             )
 
+    def check_and_reset_scene(self) -> None:
+        if not hasattr(self, "_pre_scene_fresh_step"):
+            self._pre_scene_fresh_step = 0
+        if self.scene_freq:
+            if self.scene_freq.unit == TrainFrequencyUnit.EPISODE:
+                if self._episode_num - self._pre_scene_fresh_step >= self.scene_freq.frequency:
+                    print(f"Resetting scene at episode {self._episode_num}")
+                    self.env.reset_env_by_id()
+                    self._pre_scene_fresh_step = self._episode_num
+            elif self.scene_freq.unit == TrainFrequencyUnit.STEP:
+                if self.num_timesteps - self._pre_scene_fresh_step >= self.scene_freq.frequency:
+                    print(f"Resetting scene at step {self.num_timesteps}")
+                    self.env.reset_env_by_id()
+                    self._pre_scene_fresh_step = self.num_timesteps
     def learn(
-            self: SelfPPO,
-            total_timesteps: int,
-            callback: MaybeCallback = None,
-            log_interval: int = 1,
-            tb_log_name: str = "PPO",
-            reset_num_timesteps: bool = True,
-            progress_bar: bool = False,
-    ) -> SelfPPO:
-
-        tb_log_name = (
-            "_".join([tb_log_name, self.comment]) if self.comment is not None else tb_log_name
+        self,
+        total_timesteps: int,
+        callback: MaybeCallback = None,
+        log_interval: int = 1,
+        tb_log_name: str = "PPO",
+        reset_num_timesteps: bool = True,
+        progress_bar: bool = False,
+    ) :
+        iteration = 0
+        tb_log_name = self.policy_save_path
+        total_timesteps, callback = self._setup_learn(
+            total_timesteps,
+            callback,
+            reset_num_timesteps,
+            tb_log_name,
+            progress_bar,
         )
 
-        return super().learn(
-            total_timesteps=total_timesteps,
-            callback=callback,
-            log_interval=log_interval,
-            tb_log_name=tb_log_name,
-            reset_num_timesteps=reset_num_timesteps,
-            progress_bar=progress_bar,
-        )
+        callback.on_training_start(locals(), globals())
+
+        assert self.env is not None
+
+        # 创建tqdm进度条
+        pbar = tqdm(total=total_timesteps, desc="Training Progress", unit="steps")
+        pbar.update(self.num_timesteps)  # 更新到当前已完成的步数
+        try:
+            while self.num_timesteps < total_timesteps:
+                self.check_and_reset_scene()
+                prev_timesteps = self.num_timesteps
+                continue_training = self.collect_rollouts(self.env, callback, self.rollout_buffer, n_rollout_steps=self.n_steps)
+
+                if not continue_training:
+                    break
+
+                iteration += 1
+                self._update_current_progress_remaining(self.num_timesteps, total_timesteps)
+
+                # 更新进度条
+                steps_collected = self.num_timesteps - prev_timesteps
+                pbar.update(steps_collected)
+                pbar.set_postfix({
+                    'iteration': iteration,
+                    'timesteps': f'{self.num_timesteps}/{total_timesteps}'
+                })
+
+                # Display training infos
+                if log_interval is not None and iteration % log_interval == 0:
+                    assert self.ep_info_buffer is not None
+                    self._dump_logs(iteration)
+
+                self.train()
+
+            pbar.close()  # 关闭进度条
+            callback.on_training_end()
+        except KeyboardInterrupt:
+            print("Training interrupted by user.")
+            pbar.close()
+
+        return self
 
     def train(self) -> None:
         """
@@ -339,3 +369,190 @@ class PPO(ori_PPO):
                 env = VecTransposeImage(env)
 
         return env
+
+    def _dump_logs(self, iteration: int) -> None:
+        """
+        Write log.
+        """
+        assert self.ep_info_buffer is not None
+        assert self.ep_success_buffer is not None
+
+        time_elapsed = max((time.time_ns() - self.start_time) / 1e9, sys.float_info.epsilon)
+        fps = int((self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
+        self.logger.record("time/episodes", self._episode_num, exclude="tensorboard")
+        if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
+            self.logger.record("rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]))
+            self.logger.record("rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]))
+
+            if len(self.ep_info_buffer[0]["extra"]) >= 0:
+                for key in self.ep_info_buffer[0]["extra"].keys():
+                    self.logger.record(
+                        f"rollout/ep_{key}_mean",
+                        safe_mean(
+                            [ep_info["extra"][key] for ep_info in self.ep_info_buffer]
+                        ),
+                    )
+        self.logger.record("time/fps", fps)
+        self.logger.record("time/time_elapsed", int(time_elapsed), exclude="tensorboard")
+        self.logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")
+
+        if len(self.ep_success_buffer) > 0:
+            self.logger.record("rollout/ep_success_rate", safe_mean(self.ep_success_buffer))
+        # Pass the number of timesteps for tensorboard
+        self.logger.dump(step=self.num_timesteps)
+
+    def save(
+        self,
+        path: Union[str, pathlib.Path, io.BufferedIOBase]=None,
+        exclude: Optional[Iterable[str]] = None,
+        include: Optional[Iterable[str]] = None,
+    ) -> None:
+        if path is None:
+            path = self.policy_save_path
+        print(f"Saving model to {path}")
+        super().save(
+            path=path,
+            exclude=exclude,
+            include=include,
+        )
+
+    @classmethod
+    def load(  # noqa: C901
+        cls,
+        path: Union[str, pathlib.Path, io.BufferedIOBase],
+        env: Optional[GymEnv] = None,
+        device: Union[th.device, str] = "auto",
+        custom_objects: Optional[Dict[str, Any]] = None,
+        print_system_info: bool = False,
+        force_reset: bool = True,
+        **kwargs,
+    ):
+        """
+        Load the model from a zip-file.
+        Warning: ``load`` re-creates the model from scratch, it does not update it in-place!
+        For an in-place load use ``set_parameters`` instead.
+
+        :param path: path to the file (or a file-like) where to
+            load the agent from
+        :param env: the new environment to run the loaded model on
+            (can be None if you only need prediction from a trained model) has priority over any saved environment
+        :param device: Device on which the code should run.
+        :param custom_objects: Dictionary of objects to replace
+            upon loading. If a variable is present in this dictionary as a
+            key, it will not be deserialized and the corresponding item
+            will be used instead. Similar to custom_objects in
+            ``keras.models.load_model``. Useful when you have an object in
+            file that can not be deserialized.
+        :param print_system_info: Whether to print system info from the saved model
+            and the current system info (useful to debug loading issues)
+        :param force_reset: Force call to ``reset()`` before training
+            to avoid unexpected behavior.
+            See https://github.com/DLR-RM/stable-baselines3/issues/597
+        :param kwargs: extra arguments to change the model when loading
+        :return: new model instance with loaded parameters
+        """
+        # if print_system_info:
+        #     print("== CURRENT SYSTEM INFO ==")
+        #     get_system_info()
+
+        data, params, pytorch_variables = load_from_zip_file(
+            path,
+            device=device,
+            custom_objects=custom_objects,
+            print_system_info=print_system_info,
+        )
+
+        assert data is not None, "No data found in the saved file"
+        assert params is not None, "No params found in the saved file"
+
+        # Remove stored device information and replace with ours
+        if "policy_kwargs" in data:
+            if "device" in data["policy_kwargs"]:
+                del data["policy_kwargs"]["device"]
+            # backward compatibility, convert to new format
+            if "net_arch" in data["policy_kwargs"] and len(data["policy_kwargs"]["net_arch"]) > 0:
+                saved_net_arch = data["policy_kwargs"]["net_arch"]
+                if isinstance(saved_net_arch, list) and isinstance(saved_net_arch[0], dict):
+                    data["policy_kwargs"]["net_arch"] = saved_net_arch[0]
+
+        if "policy_kwargs" in kwargs and kwargs["policy_kwargs"] != data["policy_kwargs"]:
+            raise ValueError(
+                f"The specified policy kwargs do not equal the stored policy kwargs."
+                f"Stored kwargs: {data['policy_kwargs']}, specified kwargs: {kwargs['policy_kwargs']}"
+            )
+
+        if "observation_space" not in data or "action_space" not in data:
+            raise KeyError("The observation_space and action_space were not given, can't verify new environments")
+
+        # Gym -> Gymnasium space conversion
+        for key in {"observation_space", "action_space"}:
+            data[key] = _convert_space(data[key])
+
+        if env is not None:
+            # Wrap first if needed
+            env = cls._wrap_env(env, data["verbose"])
+            # Check if given env is valid
+            # check_for_correct_spaces(env, data["observation_space"], data["action_space"])
+            # Discard `_last_obs`, this will force the env to reset before training
+            # See issue https://github.com/DLR-RM/stable-baselines3/issues/597
+            if force_reset and data is not None:
+                data["_last_obs"] = None
+            # `n_envs` must be updated. See issue https://github.com/DLR-RM/stable-baselines3/issues/1018
+            if data is not None:
+                data["n_envs"] = env.num_envs
+        else:
+            # Use stored env, if one exists. If not, continue as is (can be used for predict)
+            if "env" in data:
+                env = data["env"]
+
+        model = cls(
+            policy=data["policy_class"],
+            env=env,
+            device=device,
+            _init_setup_model=False,  # type: ignore[call-arg]
+        )
+
+        # load parameters
+        data.pop("observation_space")
+        model.__dict__.update(data)
+        model.__dict__.update(kwargs)
+        model._setup_model()
+
+        try:
+            # put state_dicts back in place
+            model.set_parameters(params, exact_match=True, device=device)
+        except RuntimeError as e:
+            # Patch to load Policy saved using SB3 < 1.7.0
+            # the error is probably due to old policy being loaded
+            # See https://github.com/DLR-RM/stable-baselines3/issues/1233
+            if "pi_features_extractor" in str(e) and "Missing key(s) in state_dict" in str(e):
+                model.set_parameters(params, exact_match=False, device=device)
+                warnings.warn(
+                    "You are probably loading a model saved with SB3 < 1.7.0, "
+                    "we deactivated exact_match so you can save the model "
+                    "again to avoid issues in the future "
+                    "(see https://github.com/DLR-RM/stable-baselines3/issues/1233 for more info). "
+                    f"Original error: {e} \n"
+                    "Note: the model should still work fine, this only a warning."
+                )
+            else:
+                raise e
+        # put other pytorch variables back in place
+        if pytorch_variables is not None:
+            for name in pytorch_variables:
+                # Skip if PyTorch variable was not defined (to ensure backward compatibility).
+                # This happens when using SAC/TQC.
+                # SAC has an entropy coefficient which can be fixed or optimized.
+                # If it is optimized, an additional PyTorch variable `log_ent_coef` is defined,
+                # otherwise it is initialized to `None`.
+                if pytorch_variables[name] is None:
+                    continue
+                # Set the data attribute directly to avoid issue when using optimizers
+                # See https://github.com/DLR-RM/stable-baselines3/issues/391
+                # recursive_setattr(model, f"{name}.data", pytorch_variables[name].data)
+
+        # Sample gSDE exploration matrix, so it uses the right device
+        # see issue #44
+        if model.use_sde:
+            model.policy.reset_noise()  # type: ignore[operator]
+        return model
