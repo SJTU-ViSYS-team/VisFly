@@ -84,7 +84,11 @@ class Dynamics:
         self._drag_random = drag_random
 
     def _init(self, cfg):
-        self.load(os.path.dirname(__file__) + f"/../../configs/drone/{cfg}.json")
+        try:
+            self.load(os.path.dirname(__file__) + f"/../../configs/drone/{cfg}.json")
+        except FileNotFoundError:
+            current_file_folder = os.path.dirname(os.path.abspath(__file__))
+            self.load(current_file_folder + f"/{cfg}.json")
         motor_direction = th.tensor([
             [1, -1, -1, 1, ],
             [-1, -1, 1, 1],
@@ -208,6 +212,54 @@ class Dynamics:
 
         return self.state
 
+    def _normalize(self, action):
+        """
+        Normalize the action from real values to [-1, 1] range
+        This function is used only for ROS node !!!
+        
+        Args:
+            action: Real action values to be normalized
+
+        Returns:
+            Normalized action in [-1, 1] range
+        """
+        if not isinstance(action, th.Tensor):
+            action = th.from_numpy(action)
+        
+        action = action.clone()
+        
+        if self.action_type == ACTION_TYPE.BODYRATE:
+            # action format: [thrust/m, bodyrate_x, bodyrate_y, bodyrate_z]
+            normalized = th.hstack([
+                (action[:, :1] / self.m - self._normal_params["thrust"].mean) / self._normal_params["thrust"].half,
+                (action[:, 1:] - self._normal_params["bodyrate"].mean) / self._normal_params["bodyrate"].half
+            ])
+            return normalized
+            
+        elif self.action_type == ACTION_TYPE.THRUST:
+            # action format: [thrust]
+            normalized = (action / self.m - self._normal_params["thrust"].mean) / self._normal_params["thrust"].half
+            return normalized
+            
+        elif self.action_type == ACTION_TYPE.VELOCITY:
+            # action format: [yaw, velocity_x, velocity_y, velocity_z]
+            normalized = th.hstack([
+                (action[:, :1] - self._normal_params["yaw"].mean) / self._normal_params["yaw"].half,
+                (action[:, 1:] - self._normal_params["velocity"].mean) / self._normal_params["velocity"].half
+            ])
+            return normalized
+            
+        elif self.action_type == ACTION_TYPE.POSITION:
+            # action format: [yaw, position_x, position_y, position_z]
+            normalized = th.hstack([
+                (action[:, :1] - self._normal_params["yaw"].mean) / self._normal_params["yaw"].half,
+                (action[:, 1:] - self._normal_params["velocity"].mean) / self._normal_params["velocity"].half
+            ])
+            return normalized
+            
+        else:
+            raise ValueError(f"Unsupported action_type: {self.action_type}")
+
     def step(self, action) -> Tuple[th.Tensor, th.Tensor]:
 
         # Add real imu delay
@@ -257,12 +309,16 @@ class Dynamics:
             self._orientation = self._orientation.normalize()
         self._t += self.ctrl_dt
 
-        # self._ugly_fix()  # has problems
+        self._ugly_fix()  # Re-enabled to prevent position explosion
 
         return self.state
 
     def _ugly_fix(self):
-        self._position = self._position.clamp(-20, 30)
+        # Clamp to reasonable values for FSC compatibility
+        # X, Y: [-100, 100] meters (large enough for any reasonable scenario)
+        # Z: [0, 10] meters (ground to reasonable altitude)
+        self._position[0:2] = self._position[0:2].clamp(-100, 100)  # X, Y
+        self._position[2] = self._position[2].clamp(0, 10)  # Z (altitude)
         self._velocity = self._velocity.clamp(-10, 10)
         self._angular_velocity = self._angular_velocity.clamp(-10, 10)
 
@@ -564,6 +620,7 @@ class Dynamics:
         else:
             raise ValueError("action_type should be one of ['thrust', 'bodyrate', 'velocity']")
 
+
     def _de_normalize(self, command):
         """_summary_
             de-normalize the command to the real value
@@ -574,7 +631,7 @@ class Dynamics:
             _type_: _description_
         """
         if not isinstance(command, th.Tensor):
-            return th.from_numpy(command).T
+            return self._de_normalize(th.from_numpy(command))
 
         if self.action_type == ACTION_TYPE.BODYRATE:
             command = th.hstack([

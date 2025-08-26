@@ -66,6 +66,7 @@ class PPO(ori_PPO):
 
     def __init__(self, comment="", save_path=None, scene_freq=None, *args, **kwargs):
         self.comment = comment
+        self.name = "PPO"
         self.scene_freq = scene_freq
         if self.scene_freq and not isinstance(self.scene_freq, TrainFreq):
             Warning(f"scene_freq should be a TrainFreq, got {self.scene_freq}, converting to TrainFreq(1000000, TrainFrequencyUnit.STEP)")
@@ -73,7 +74,7 @@ class PPO(ori_PPO):
 
         root = os.path.dirname(os.path.abspath(sys.argv[0]))
         self.save_path = f"{root}/saved" if save_path is None else save_path
-        self.policy_save_path = f"{self.save_path}/PPO_{self.comment}" if comment is not None else f"{self.save_path}/ppo"
+        self.create_save_path()
         kwargs["tensorboard_log"] = self.save_path
         super().__init__(*args, **kwargs)
         try:
@@ -84,6 +85,18 @@ class PPO(ori_PPO):
                 "The environment does not have a tensor_output attribute. "
                 "This may cause issues if the environment expects tensor outputs."
             )
+
+    def create_save_path(self, comment=None):
+        self.comment = self.comment if comment is None else comment
+        self.comment = "std" if self.comment is None else self.comment
+        index = 1
+        path = f"{self.save_path}/{self.name}_{self.comment}_{index}"
+        while os.path.exists(path):
+            index += 1
+            # path = f"{self.save_path}/{self.name}_{comment}_{index}" if comment is not None \
+            #     else f"{self.save_path}/{self.name}_{index}"
+            path = f"{self.save_path}/{self.name}_{self.comment}_{index}"
+        self.policy_save_path = path if path.endswith(".zip") else f"{path}.zip"
 
     def check_and_reset_scene(self) -> None:
         if not hasattr(self, "_pre_scene_fresh_step"):
@@ -109,12 +122,12 @@ class PPO(ori_PPO):
         progress_bar: bool = False,
     ) :
         iteration = 0
-        tb_log_name = self.policy_save_path
+        tb_log_name = self.save_path
         total_timesteps, callback = self._setup_learn(
             total_timesteps,
             callback,
             reset_num_timesteps,
-            tb_log_name,
+            self.name if self.comment is None else f"{self.name}_{self.comment}",
             progress_bar,
         )
 

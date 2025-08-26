@@ -7,7 +7,7 @@ from typing import Union, Tuple, Optional, Type, Dict, Any, Iterable
 
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.noise import ActionNoise
-from stable_baselines3.common.type_aliases import Schedule, GymEnv, MaybeCallback
+from stable_baselines3.common.type_aliases import Schedule, GymEnv, MaybeCallback, TrainFreq, TrainFrequencyUnit
 from stable_baselines3.common.utils import safe_mean
 from stable_baselines3.sac import SAC as sb_SAC
 from stable_baselines3.sac.policies import SACPolicy
@@ -22,31 +22,82 @@ class SAC(sb_SAC):
         "MultiInputPolicy": MultiInputPolicy,
     }
 
-    def __init__(self, comment="", save_path=None, *args, **kwargs):
+    def __init__(self, comment="", save_path=None,scene_freq=None, *args, **kwargs):
         self.comment = comment
         root = os.path.dirname(os.path.abspath(sys.argv[0]))
         self.save_path = f"{root}/saved" if save_path is None else save_path
         self.policy_save_path = f"{self.save_path}/PPO_{self.comment}" if comment is not None else f"{self.save_path}/ppo"
         kwargs["tensorboard_log"] = self.save_path
+        self.scene_freq = scene_freq
+        if self.scene_freq and not isinstance(self.scene_freq, TrainFreq):
+            Warning(f"scene_freq should be a TrainFreq, got {self.scene_freq}, converting to TrainFreq(1000000, TrainFrequencyUnit.STEP)")
+            self.scene_freq = TrainFreq(self.scene_freq, TrainFrequencyUnit.STEP)
+
         super().__init__(*args, **kwargs)
 
+    def check_and_reset_scene(self) -> None:
+        if not hasattr(self, "_pre_scene_fresh_step"):
+            self._pre_scene_fresh_step = 0
+        if self.scene_freq:
+            if self.scene_freq.unit == TrainFrequencyUnit.EPISODE:
+                if self._episode_num - self._pre_scene_fresh_step >= self.scene_freq.frequency:
+                    print(f"Resetting scene at episode {self._episode_num}")
+                    self.env.reset_env_by_id()
+                    self._pre_scene_fresh_step = self._episode_num
+            elif self.scene_freq.unit == TrainFrequencyUnit.STEP:
+                if self.num_timesteps - self._pre_scene_fresh_step >= self.scene_freq.frequency:
+                    print(f"Resetting scene at step {self.num_timesteps}")
+                    self.env.reset_env_by_id()
+                    self._pre_scene_fresh_step = self.num_timesteps
+
     def learn(
-        self: SelfSAC,
+        self,
         total_timesteps: int,
         callback: MaybeCallback = None,
         log_interval: int = 4,
         tb_log_name: str = "SAC",
         reset_num_timesteps: bool = True,
         progress_bar: bool = False,
-    ) -> SelfSAC:
-        return super().learn(
-            total_timesteps=total_timesteps,
-            callback=callback,
-            log_interval=log_interval,
-            tb_log_name=tb_log_name+"_"+self.comment if self.comment is not None else tb_log_name,
-            reset_num_timesteps=reset_num_timesteps,
-            progress_bar=progress_bar,
+    ):
+        total_timesteps, callback = self._setup_learn(
+            total_timesteps,
+            callback,
+            reset_num_timesteps,
+            tb_log_name+"_"+self.comment if self.comment is not None else tb_log_name,
+            progress_bar,
         )
+
+        callback.on_training_start(locals(), globals())
+
+        assert self.env is not None, "You must set the environment before calling learn()"
+        assert isinstance(self.train_freq, TrainFreq)  # check done in _setup_learn()
+
+        while self.num_timesteps < total_timesteps:
+            self.check_and_reset_scene()
+            rollout = self.collect_rollouts(
+                self.env,
+                train_freq=self.train_freq,
+                action_noise=self.action_noise,
+                callback=callback,
+                learning_starts=self.learning_starts,
+                replay_buffer=self.replay_buffer,
+                log_interval=log_interval,
+            )
+
+            if not rollout.continue_training:
+                break
+
+            if self.num_timesteps > 0 and self.num_timesteps > self.learning_starts:
+                # If no `gradient_steps` is specified,
+                # do as many gradients steps as steps performed during the rollout
+                gradient_steps = self.gradient_steps if self.gradient_steps >= 0 else rollout.episode_timesteps
+                # Special case when the user passes `gradient_steps=0`
+                if gradient_steps > 0:
+                    self.train(batch_size=self.batch_size, gradient_steps=gradient_steps)
+
+        callback.on_training_end()
+
+        return self
 
     def _dump_logs(self) -> None:
         """
