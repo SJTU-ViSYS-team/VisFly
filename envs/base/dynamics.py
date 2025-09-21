@@ -38,6 +38,7 @@ class Dynamics:
             integrator: str = "euler",
             drag_random: float = 0,
             cfg: str = "drone_state",
+            wind_settings: Optional[List] = [0,0,0]
     ):
         assert action_type in ["bodyrate", "thrust", "velocity", "position"]  # 对两个变量进行断言检查
         assert ori_output_type in ["quaternion", "euler"]
@@ -82,6 +83,9 @@ class Dynamics:
         self._init_motor_omega = self._compute_rotor_omega(self._init_thrust)
         
         self._drag_random = drag_random
+        
+        self.wind_velocity = None
+        self._create_wind(wind_settings=wind_settings)
 
     def _init(self, cfg):
         self.load(os.path.dirname(__file__) + f"/../../configs/drone/{cfg}.json")
@@ -119,6 +123,59 @@ class Dynamics:
         self._linear_drag_coeffs = self._linear_drag_coeffs_mean
         self._quad_drag_coeffs = self._quad_drag_coeffs_mean
 
+    def _create_wind(self, wind_settings):
+        if isinstance(wind_settings, (int, float, list, tuple)):
+            if isinstance(wind_settings[0], (int, float)):
+                self._wind_velocity_func1 = lambda x,y:th.tensor(wind_settings).reshape(3,1)
+            elif isinstance(wind_settings[0], str):
+                if len(wind_settings) == 6:
+                    x_func = eval("lambda x,y:" + wind_settings[0])
+                    y_func = eval("lambda x,y:" + wind_settings[1])
+                    z_func = eval("lambda x,y:" + wind_settings[2])
+                    x2_func = eval("lambda x,y:" + wind_settings[3])
+                    y2_func = eval("lambda x,y:" + wind_settings[4])
+                    z2_func = eval("lambda x,y:" + wind_settings[5])
+                    # self._wind_velocity_func = lambda x,y,z: th.stack([
+                    #     x_func(x,y),
+                    #     y_func(x,y),
+                    #     z_func(x,y)
+                    # ]) + th.stack([
+                    #     x2_func(x,z),
+                    #     y2_func(x,z),
+                    #     z2_func(x,z)
+                    # ])
+                    self._wind_velocity_func1 = lambda x,y: th.stack([
+                        x_func(x,y[0]),
+                        y_func(x,y[1]),
+                        z_func(x,y[2])
+                    ])
+                    self._wind_velocity_func2 = lambda x,y: th.stack([
+                        x2_func(x,y[0]),
+                        y2_func(x,y[1]),
+                        z2_func(x,y[2])
+                    ])
+
+                elif len(wind_settings) == 3:
+                    x_func = eval("lambda x,y:" + wind_settings[0])
+                    y_func = eval("lambda x,y:" + wind_settings[1])
+                    z_func = eval("lambda x,y:" + wind_settings[2])
+                    self._wind_velocity_func1 = lambda x,y, z: th.stack([
+                        x_func(x,y[0]),
+                        y_func(x,y[1]),
+                        z_func(x,y[2])
+                    ])
+                else:
+                    raise ValueError("wind_settings should be a list of length 3 or 6, or a string function")
+        elif isinstance(wind_settings, dict):
+            if True:
+                pass
+            elif True:
+                pass
+
+        self._wind_velocity_1 = th.zeros((3, self.num), device=self.device)  # 初始风速
+        self._wind_velocity_2 = th.zeros((3, self.num), device=self.device)  # 初始风速
+        self.update_wind()
+        
     def detach(self):
         self._position = self._position.clone().detach()
         self._orientation = self._orientation.clone().detach()
@@ -209,6 +266,7 @@ class Dynamics:
         return self.state
 
     def step(self, action) -> Tuple[th.Tensor, th.Tensor]:
+        self.update_wind()
 
         # Add real imu delay
         if self._comm_delay_steps:
@@ -251,7 +309,8 @@ class Dynamics:
                     J=self._inertia,
                     J_inv=self._inertia_inv,
                     dt=self.dt,
-                    type=self._integrator
+                    type=self._integrator,
+                    wind=self.wind_velocity
                 )
             )
             self._orientation = self._orientation.normalize()
@@ -265,7 +324,12 @@ class Dynamics:
         self._position = self._position.clamp(-20, 30)
         self._velocity = self._velocity.clamp(-10, 10)
         self._angular_velocity = self._angular_velocity.clamp(-10, 10)
-
+        
+    def update_wind(self):
+        self._wind_velocity_1 = self._wind_velocity_func1(self.t, self._wind_velocity_1)
+        if hasattr(self, '_wind_velocity_func2'):
+            self._wind_velocity_2 = self._wind_velocity_func2(self.t, self._wind_velocity_2)
+        self.wind_velocity = self._wind_velocity_1 + self._wind_velocity_2
     def _get_thrust_from_cmd(self, command) -> th.Tensor:
         """_summary_
             get the single _thrusts from the command
@@ -595,7 +659,7 @@ class Dynamics:
 
     @property
     def velocity(self):
-        return self._velocity.T
+        return (self._velocity+self.wind_velocity).T
 
     @property
     def angular_velocity(self):

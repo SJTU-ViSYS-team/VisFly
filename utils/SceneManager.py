@@ -763,6 +763,8 @@ class SceneManager(ABC):
                     self._drones[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(
                         self._drone_path[agent_id % len(self._drone_path)]
                     )
+                    if not self._drones[scene_id][agent_id]:
+                        raise AttributeError
 
             # if self.is_multi_drone:
                 # if self._drones[scene_id][0] is None:

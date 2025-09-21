@@ -101,7 +101,6 @@ class TestBase:
         obs = env.reset(is_test=True)
         self._img_names = [name for name in obs.keys() if (("color" in name) or ("depth" in name) or ("semantic" in name))]
         self.obs_all.append(obs)
-        self.obs_all[-1]["target"] = copy.deepcopy(env.envs.dynamic_object_position)
         self.state_all.append(env.state)
         self.info_all.append([{} for _ in range(env.num_envs)])
         self.t.append(env.t.clone())
@@ -131,7 +130,6 @@ class TestBase:
             self.action_all.append(action)
             self.state_all.append(state)
             self.obs_all.append(obs)
-            self.obs_all[-1]["target"] = copy.deepcopy(env.envs.dynamic_object_position)
             self.info_all.append(copy.deepcopy(info))
             self.t.append(env.t.clone())
             if env.visual:
