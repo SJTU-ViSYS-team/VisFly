@@ -170,8 +170,8 @@ class TargetUniformRandomizer(UniformStateRandomizer):
             x, y, z = vector[:, 0], vector[:, 1], vector[:, 2]
 
             # Calculate yaw (arctan2 handles the quadrant correctly)
-            yaw = th.arctan2(y, x)
-            yaw = th.arccos(x / vector[:,:2].norm(dim=1)) * y.sign()
+            y_sign = th.where(y.sign()>=0, 1, -1)
+            yaw = th.arccos(x / vector[:,:2].norm(dim=1)) * y_sign
             # Calculate pitch
             norm = th.linalg.norm(vector)  # Magnitude of the vector
             pitch = th.arcsin(z / norm)
@@ -198,12 +198,13 @@ class TargetUniformRandomizer(UniformStateRandomizer):
         yaw, pitch = calculate_yaw_pitch(direction)
         orientation = th.stack([th.zeros(num), pitch*0, yaw], dim=1) + (2 * th.rand(num, 3) - 1) * self.orientation.half # yaw, pitch, roll
         if "velocity" in kwargs.keys():
-            velocity = th.tile(kwargs["velocity"].unsqueeze(0), (num, 1))
+            velocity = th.tile(kwargs["velocity"].unsqueeze(0), (num, 1)) + (2 * th.rand(num, 3) - 1) * self.velocity.half
         else:
             velocity = (2 * th.rand(num, 3) - 1) * self.velocity.half + self.velocity.mean
         angular_velocity = (2 * th.rand(num, 3) - 1) * self.angular_velocity.half + self.angular_velocity.mean
 
         return position, orientation, velocity, angular_velocity
+
 
 class UnionRandomizer:
     Randomizer_alias = {

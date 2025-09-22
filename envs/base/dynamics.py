@@ -309,7 +309,7 @@ class Dynamics:
             self._orientation = self._orientation.normalize()
         self._t += self.ctrl_dt
 
-        self._ugly_fix()  # Re-enabled to prevent position explosion
+        # self._ugly_fix()  # Re-enabled to prevent position explosion
 
         return self.state
 

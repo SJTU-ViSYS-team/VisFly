@@ -251,8 +251,8 @@ class TestBase:
                     elif "color" in name:
                         img = np.hstack(np.transpose(obs[name], (0, 2, 3, 1)))
                         img = img.astype(np.uint8)
-                        video_obs[i].write(img)
-                        # img = (cv2.cvtColor(img, cv2.COLOR_RGB2BGR)).astype(np.uint8)
+                        # video_obs[i].write(img)
+                        img = (cv2.cvtColor(img, cv2.COLOR_RGB2BGR)).astype(np.uint8)
                         video_obs[i].write(img)
                     elif "semantic" in name:
                         max_id = self.max_semantic_id
