@@ -2,7 +2,7 @@ import habitat_sim
 import numpy as np
 import torch as th
 import magnum as mn
-from scipy.interpolate import CubicSpline
+from scipy.interpolate import CubicSpline, interp1d
 from .common import std_to_habitat
 from ..utils.randomization import UniformStateRandomizer, NormalStateRandomizer, StateRandomizer, load_generator, load_dist
 from ..utils.datasets.datasets import get_files_with_suffix
@@ -10,11 +10,11 @@ import os, sys
 import json
 import copy
 
-g = th.as_tensor([[0, 0, -9.8]])
+g = th.as_tensor([[0, 0, -9.8]], dtype=th.float32)
 
 
 class Path:
-    def __init__(self, cls, velocity, kwargs):
+    def __init__(self, cls, velocity=None, kwargs={}):
         self.cls = cls
         self.const_velocity = velocity
 
@@ -29,7 +29,7 @@ class Path:
                                        self.radius * np.sin(0) + self.center[1],
                                        self.center[2]], dtype=th.float32).unsqueeze(0)
         elif cls == "polygon":
-            self.points = th.as_tensor(kwargs["points"])
+            self.points = th.as_tensor(kwargs["points"], dtype=th.float32)
             self.num_points = len(self.points)
             assert self.num_points >= 2, "Polygon path must have at least two points."
             self.current_index = 0
@@ -38,26 +38,40 @@ class Path:
             # 新增cubic spline支持
             # self.control_points = np.array(kwargs["points"])
             points_info = kwargs["points"]
-            self.control_points = load_generator(cls=points_info["class"], kwargs=points_info["kwargs"]).generate(1)[0][0]
+            cubic_type = kwargs.get("type","periodic")
+            res = load_generator(cls=points_info["class"], kwargs=points_info["kwargs"]).generate(1)
+
+            self.control_points, self.control_velocities = res[0][0], res[2][0]
+            # 确保使用float32类型
+            self.control_points = self.control_points
+            self.control_velocities = self.control_velocities.norm(dim=1, keepdim=True)
+
             # add last point as first point to close the loop
-            self.control_points = np.concatenate([self.control_points, self.control_points[:1]], axis=0)
+            if cubic_type == "periodic":
+                self.control_points = np.concatenate([self.control_points, self.control_points[:1]], axis=0)
+                self.control_velocities = np.concatenate([self.control_velocities, self.control_velocities[:1]], axis=0).squeeze()
+
             self.position = self.control_points[0]
-            self._setup_cubic_spline()
+            self.velocity_norm = self.control_velocities[0]
+            self._setup_cubic_spline(cubic_type=cubic_type)
             self.current_arc_length = 0.0
 
         self.pre_pos = copy.deepcopy(self.position)
 
-    def _setup_cubic_spline(self):
+    def _setup_cubic_spline(self, cubic_type="periodic"):
         """设置cubic spline插值，使用弧长参数化确保均匀速度"""
         # 计算控制点间距离
-        distances = np.sqrt(np.sum(np.diff(self.control_points, axis=0) ** 2, axis=1))
-        self.cumulative_distances = np.concatenate([[0], np.cumsum(distances)])
+        distances = np.sqrt(np.sum(np.diff(self.control_points, axis=0) ** 2, axis=1)).astype(np.float32)
+        self.cumulative_distances = np.concatenate([[0], np.cumsum(distances)]).astype(np.float32)
 
         # 创建三次样条（参数化）
-        self.cs_x = CubicSpline(self.cumulative_distances, self.control_points[:, 0], bc_type="periodic")
-        self.cs_y = CubicSpline(self.cumulative_distances, self.control_points[:, 1], bc_type="periodic")
-        self.cs_z = CubicSpline(self.cumulative_distances, self.control_points[:, 2], bc_type="periodic")
+        self.cs_x = CubicSpline(self.cumulative_distances, self.control_points[:, 0], bc_type=cubic_type)
+        self.cs_y = CubicSpline(self.cumulative_distances, self.control_points[:, 1], bc_type=cubic_type)
+        self.cs_z = CubicSpline(self.cumulative_distances, self.control_points[:, 2], bc_type=cubic_type)
 
+        self.cs_v = CubicSpline(self.cumulative_distances, self.control_velocities, bc_type=cubic_type)
+        self.cs_v = interp1d(self.cumulative_distances, self.control_velocities.squeeze(), kind='linear',
+                 assume_sorted=True, bounds_error=False, fill_value='extrapolate')
         # 计算弧长参数化
         self._compute_arc_length_parameterization()
 
@@ -65,17 +79,17 @@ class Path:
         """计算弧长参数化，确保均匀速度"""
         # 在参数空间中密集采样
         n_samples = 1000
-        param_samples = np.linspace(0, self.cumulative_distances[-1], n_samples)
-        
+        param_samples = np.linspace(0, self.cumulative_distances[-1], n_samples, dtype=np.float32)
+
         # 计算每个采样点的位置
-        x_samples = self.cs_x(param_samples)
-        y_samples = self.cs_y(param_samples)
-        z_samples = self.cs_z(param_samples)
-        
+        x_samples = self.cs_x(param_samples).astype(np.float32)
+        y_samples = self.cs_y(param_samples).astype(np.float32)
+        z_samples = self.cs_z(param_samples).astype(np.float32)
+
         # 计算相邻点之间的实际距离
         positions = np.column_stack([x_samples, y_samples, z_samples])
-        arc_lengths = np.zeros(n_samples)
-        
+        arc_lengths = np.zeros(n_samples, dtype=np.float32)
+
         for i in range(1, n_samples):
             segment_length = np.linalg.norm(positions[i] - positions[i-1])
             arc_lengths[i] = arc_lengths[i-1] + segment_length
@@ -93,7 +107,12 @@ class Path:
         return f"ObjectManager(type={self.cls})"
 
     def get_velocity(self, t, pos, dt):
+        self.pre_v = self.velocity.clone()
+        self.velocity = (self.position - self.pre_pos)/dt
         return (self.position - self.pre_pos)/dt
+
+    def get_acceleration(self, t, pos, dt):
+        return (self.velocity - self.pre_v)/dt
 
     def get_target(self, t, pos, dt):
         self.pre_pos = copy.deepcopy(self.position)
@@ -102,7 +121,6 @@ class Path:
             y = self.radius * np.sin(self.angular_velocity * t) + self.center[1]
             z = self.center[2]
             self.position = th.tensor([x, y, z], dtype=th.float32).unsqueeze(0)
-            # return th.tensor([x, y, z], dtype=th.float32).unsqueeze(0)
         elif self.cls == "polygon":
             next_index = (self.current_index + 1) % self.num_points
             dis_vec = self.points[next_index] - self.position
@@ -110,29 +128,28 @@ class Path:
             dis_vector = dis_vec / dis_norm
             velocity = self.const_velocity if dis_norm > self.const_velocity * dt else dis_norm / dt
             self.position = self.position + dis_vector * velocity * dt
-            # print(dis_norm,  self.velocity * dt)
 
             if dis_norm <= self.const_velocity * dt:
                 self.current_index = next_index
-            # return self.position
         elif self.cls == "rrt":
             pass
         elif self.cls == "cubic":
             # cubic spline路径，使用弧长参数化确保均匀速度
-            self.current_arc_length += self.const_velocity * dt
+            velocity = self.const_velocity if self.const_velocity else self.velocity_norm
+            self.current_arc_length += velocity * dt
             if self.current_arc_length >= self.total_arc_length:
                 self.current_arc_length = self.current_arc_length % self.total_arc_length
 
             # 从弧长映射到参数空间
-            param_value = self.arc_to_param(self.current_arc_length)
+            param_value = float(self.arc_to_param(self.current_arc_length))
+            self.velocity_norm = th.as_tensor(self.cs_v(param_value), dtype=th.float32)
             
-            # 从样条获取位置
-            x = self.cs_x(param_value)
-            y = self.cs_y(param_value)
-            z = self.cs_z(param_value)
+            # 从样条获取位置，确保使用float32
+            x = float(self.cs_x(param_value))
+            y = float(self.cs_y(param_value))
+            z = float(self.cs_z(param_value))
             self.position = th.tensor([x, y, z], dtype=th.float32).reshape(1,3)
         return self.position
-
 
     def reset(self):
         if self.cls == "circle":
@@ -143,7 +160,6 @@ class Path:
             self.current_arc_length = 0.0
         elif self.cls == "rrt":
             pass
-            # replan the path
 
 
 class ObjectManager:
@@ -182,6 +198,7 @@ class ObjectManager:
 
         self._positions = [None for _ in range(len(objs_setting))]
         self._velocities = [None for _ in range(len(objs_setting))]
+        self._accelerations = [None for _ in range(len(objs_setting))]  # assuming constant gravity
         self._orientations = [None for _ in range(len(objs_setting))]
 
         self._objects_handles = []
@@ -202,7 +219,9 @@ class ObjectManager:
             )
             self._generators.append(generator)
 
-            velocity = load_dist(obj_setting["velocity"]).generate(1)
+            velocity = load_dist(obj_setting["velocity"]).generate(1) if "velocity" in obj_setting.keys() else None
+            if  velocity is None:
+                assert obj_setting["path"]["class"]=="cubic", "only cubic path support no velocity setting"
             self._mean_velocity.append(velocity)
             self._mean_angular_velocity.append(load_dist(obj_setting["angular_velocity"]).generate(1))
             self._objects_handles.append(
@@ -229,6 +248,7 @@ class ObjectManager:
             position = self._target_mgrs[i].get_target(t=self._t, dt=self.dt, pos=self._positions[i])
             self._positions[i] = position
             self._velocities[i] = self._target_mgrs[i].get_velocity(t=self._t, dt=self.dt, pos=self._positions[i])
+            self._accelerations[i] = self._target_mgrs[i].get_acceleration(t=self._t, dt=self.dt, pos=self._positions[i])
             # dis = (position-self._positions[i]).norm()
             # self._positions[i], self._orientations[i] = position, orientation
             # hab_pos, hab_ori = std_to_habitat(position, orientation)
@@ -250,6 +270,10 @@ class ObjectManager:
     @property
     def velocity(self):
         return th.vstack(self._velocities)
+
+    @property
+    def acceleration(self):
+        return th.vstack(self._accelerations)
 
     @property
     def angular_velocity(self):

@@ -109,8 +109,10 @@ class DroneGymEnvsBase(VecEnv):
             self.action_space = spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
         elif self.envs.dynamics.action_type == ACTION_TYPE.VELOCITY:
             self.action_space = spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
+        elif self.envs.dynamics.action_type == ACTION_TYPE.POSITION:
+            self.action_space = spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
         else:
-            raise ValueError("action_type should be one of ['bodyrate', 'thrust', 'velocity']")
+            raise ValueError("action_type should be one of ['bodyrate', 'thrust', 'velocity', 'position'], but got {}".format(self.envs.dynamics.action_type))
 
         self._step_count = th.zeros((self.num_agent,), dtype=th.int32)
         self._reward = th.zeros((self.num_agent,))
@@ -218,9 +220,12 @@ class DroneGymEnvsBase(VecEnv):
         else:
             _info["is_success"] = False
 
+        l = self._step_count[indice].cpu().clone().detach().numpy()
+        if l <= 2:
+            Warning("The length of the episode is too short, check the initial state randomization.")
         _info["episode"] = {
             "r": self._rewards[indice].cpu().clone().detach().numpy(),
-            "l": self._step_count[indice].cpu().clone().detach().numpy(),
+            "l": l,
             "t": (self._step_count[indice] * self.envs.dynamics.ctrl_dt).cpu().clone().detach().numpy(),
         }
         if self.requires_grad:
@@ -513,6 +518,14 @@ class DroneGymEnvsBase(VecEnv):
     @property
     def full_state(self):
         return self.envs.full_state
+
+    @property
+    def dynamic_object_position(self):
+        """
+        Get the position of dynamic objects in the environment.
+        :return: (Tensor) Position of dynamic objects, shape (num_envs, num_dynamic_objects, 3)
+        """
+        return self.envs.dynamic_object_position
 
     def env_is_wrapped(self):
         return False

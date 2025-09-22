@@ -88,7 +88,11 @@ class Dynamics:
         self._create_wind(wind_settings=wind_settings)
 
     def _init(self, cfg):
-        self.load(os.path.dirname(__file__) + f"/../../configs/drone/{cfg}.json")
+        try:
+            self.load(os.path.dirname(__file__) + f"/../../configs/drone/{cfg}.json")
+        except FileNotFoundError:
+            current_file_folder = os.path.dirname(os.path.abspath(__file__))
+            self.load(current_file_folder + f"/{cfg}.json")
         motor_direction = th.tensor([
             [1, -1, -1, 1, ],
             [-1, -1, 1, 1],
@@ -265,6 +269,54 @@ class Dynamics:
 
         return self.state
 
+    def _normalize(self, action):
+        """
+        Normalize the action from real values to [-1, 1] range
+        This function is used only for ROS node !!!
+        
+        Args:
+            action: Real action values to be normalized
+
+        Returns:
+            Normalized action in [-1, 1] range
+        """
+        if not isinstance(action, th.Tensor):
+            action = th.from_numpy(action)
+        
+        action = action.clone()
+        
+        if self.action_type == ACTION_TYPE.BODYRATE:
+            # action format: [thrust/m, bodyrate_x, bodyrate_y, bodyrate_z]
+            normalized = th.hstack([
+                (action[:, :1] / self.m - self._normal_params["thrust"].mean) / self._normal_params["thrust"].half,
+                (action[:, 1:] - self._normal_params["bodyrate"].mean) / self._normal_params["bodyrate"].half
+            ])
+            return normalized
+            
+        elif self.action_type == ACTION_TYPE.THRUST:
+            # action format: [thrust]
+            normalized = (action / self.m - self._normal_params["thrust"].mean) / self._normal_params["thrust"].half
+            return normalized
+            
+        elif self.action_type == ACTION_TYPE.VELOCITY:
+            # action format: [yaw, velocity_x, velocity_y, velocity_z]
+            normalized = th.hstack([
+                (action[:, :1] - self._normal_params["yaw"].mean) / self._normal_params["yaw"].half,
+                (action[:, 1:] - self._normal_params["velocity"].mean) / self._normal_params["velocity"].half
+            ])
+            return normalized
+            
+        elif self.action_type == ACTION_TYPE.POSITION:
+            # action format: [yaw, position_x, position_y, position_z]
+            normalized = th.hstack([
+                (action[:, :1] - self._normal_params["yaw"].mean) / self._normal_params["yaw"].half,
+                (action[:, 1:] - self._normal_params["velocity"].mean) / self._normal_params["velocity"].half
+            ])
+            return normalized
+            
+        else:
+            raise ValueError(f"Unsupported action_type: {self.action_type}")
+
     def step(self, action) -> Tuple[th.Tensor, th.Tensor]:
         self.update_wind()
 
@@ -316,12 +368,16 @@ class Dynamics:
             self._orientation = self._orientation.normalize()
         self._t += self.ctrl_dt
 
-        # self._ugly_fix()  # has problems
+        # self._ugly_fix()  # Re-enabled to prevent position explosion
 
         return self.state
 
     def _ugly_fix(self):
-        self._position = self._position.clamp(-20, 30)
+        # Clamp to reasonable values for FSC compatibility
+        # X, Y: [-100, 100] meters (large enough for any reasonable scenario)
+        # Z: [0, 10] meters (ground to reasonable altitude)
+        self._position[0:2] = self._position[0:2].clamp(-100, 100)  # X, Y
+        self._position[2] = self._position[2].clamp(0, 10)  # Z (altitude)
         self._velocity = self._velocity.clamp(-10, 10)
         self._angular_velocity = self._angular_velocity.clamp(-10, 10)
         
@@ -358,12 +414,26 @@ class Dynamics:
             a_des = self._VELOCITY_PID.p * (command[1:] - self._velocity)
             F_des = self.m * (a_des - g)  # world axis
 
-            yaw_spd_des = (self._orientation.toEuler()[2] - command[0]) * self._VELOCITY_PID.p
+            # Auto yaw control - make drone face velocity direction
+            velocity_horizontal = self._velocity[:2, :]  # Get x,y components
+            velocity_norm = velocity_horizontal.norm(dim=0)
+            # Only update yaw when there's significant horizontal movement
+            yaw_des = th.where(
+                velocity_norm > 0.1,  # threshold to avoid jitter when stationary
+                th.atan2(velocity_horizontal[1], velocity_horizontal[0]),
+                self._orientation.toEuler()[2]  # keep current yaw when stationary
+            )
+
+            current_yaw = self._orientation.toEuler()[2]
+            yaw_error = yaw_des - current_yaw
+            # Handle yaw angle wrapping (keep error in [-π, π])
+            yaw_error = th.atan2(th.sin(yaw_error), th.cos(yaw_error))
+            yaw_spd_des = yaw_error * self._VELOCITY_PID.d * 2.0  # Gain for yaw tracking
 
             gross_thrust_des = self._orientation.transform(F_des)[2]
             R = self._orientation.R
             b3_des = F_des / F_des.norm(dim=0)
-            c1_des = th.cat([command[0].cos(), command[0].sin(), th.zeros_like(command[0])])
+            c1_des = th.stack([yaw_des.cos(), yaw_des.sin(), th.zeros_like(yaw_des)], dim=0)
             b2_des = cross(b3_des, c1_des)
             b2_des = b2_des / b2_des.norm(dim=0)
             b1_des = cross(b2_des, b3_des)
@@ -379,19 +449,26 @@ class Dynamics:
             body_torque_des = self._inertia @ (self._BODYRATE_PID.p @ pose_err + self._BODYRATE_PID.p @ ang_vel_err - cross(self._angular_velocity, self._angular_velocity))
 
             thrusts_des = self._B_allocation_inv @ th.vstack([gross_thrust_des, body_torque_des])
-            # raise NotImplementedError
         elif self.action_type == ACTION_TYPE.POSITION:
             command = command.T
             v_des = self._POSITION_PID.d * (command[1:] - self._position)
             a_des = self._VELOCITY_PID.d * (v_des - self._velocity)
             F_des = self.m * (a_des - g)  # world axis
 
-            yaw_spd_des = (self._orientation.toEuler()[2] - command[0]) * self._POSITION_PID.d
+            # Use command[0] as desired yaw angle instead of auto yaw control
+            yaw_des = command[0]  # Direct yaw control from command input
+
+            current_yaw = self._orientation.toEuler()[2]
+            yaw_error = yaw_des - current_yaw
+            # Handle yaw angle wrapping (keep error in [-π, π])
+            # 确保角度误差在最短路径上，处理角度环绕问题
+            yaw_error = th.atan2(th.sin(yaw_error), th.cos(yaw_error))
+            yaw_spd_des = yaw_error * self._POSITION_PID.d * 2.0
 
             gross_thrust_des = self._orientation.transform(F_des)[2]
             R = self._orientation.R
             b3_des = F_des / F_des.norm(dim=0)
-            c1_des = th.cat([command[0].cos(), command[0].sin(), th.zeros_like(command[0])])
+            c1_des = th.stack([yaw_des.cos(), yaw_des.sin(), th.zeros_like(yaw_des)], dim=0)
             b2_des = cross(b3_des, c1_des)
             b2_des = b2_des / b2_des.norm(dim=0)
             b1_des = cross(b2_des, b3_des)
@@ -403,8 +480,16 @@ class Dynamics:
                 m = 0.5 * (R_des[..., i].T @ R[..., i] - R[..., i].T @ R_des[..., i])
                 pose_err[:, i] = -th.as_tensor([-m[1, 2], m[0, 2], -m[0, 1]], device=self.device)
 
-                ang_vel_err[:, i] = (R_des[..., i].T @ R[..., i] @ th.tensor([[0], [0], [yaw_spd_des[i]]], device=self.device).squeeze() - self._angular_velocity[:, i])
-            body_torque_des = self._inertia @ (self._BODYRATE_PID.p @ pose_err + self._BODYRATE_PID.p @ ang_vel_err - cross(self._angular_velocity, self._angular_velocity))
+                ang_vel_err[:, i] = (
+                                        R_des[..., i].T @ R[..., i] @ th.tensor([[0], [0], [yaw_spd_des[i]]], device=self.device).squeeze()
+                                        - self._angular_velocity[:, i]
+                                     )
+            body_torque_des = self._inertia @ (
+                    self._BODYRATE_PID.p @ pose_err
+                    + 1.2 * self._BODYRATE_PID.p @ ang_vel_err
+                    - self._BODYRATE_PID.d @ self._angular_acc
+                    - cross(self._angular_velocity, self._inertia @ self._angular_velocity)
+            )
 
             thrusts_des = self._B_allocation_inv @ th.vstack([gross_thrust_des, body_torque_des])
             # raise NotImplementedError
@@ -593,11 +678,12 @@ class Dynamics:
             yaw_bias = th.pi - yaw_scale * normal_range[1]
             self._normal_params = {
                 "velocity": Uniform(mean=pos_bias, half=pos_scale).to(self.device),
-                "yaw": Uniform(mean=yaw_bias, half=yaw_bias).to(self.device),
+                "yaw": Uniform(mean=yaw_bias, half=yaw_scale).to(self.device),
             }
 
         else:
             raise ValueError("action_type should be one of ['thrust', 'bodyrate', 'velocity']")
+
 
     def _de_normalize(self, command):
         """_summary_
@@ -609,7 +695,7 @@ class Dynamics:
             _type_: _description_
         """
         if not isinstance(command, th.Tensor):
-            return th.from_numpy(command).T
+            return self._de_normalize(th.from_numpy(command))
 
         if self.action_type == ACTION_TYPE.BODYRATE:
             command = th.hstack([
@@ -632,11 +718,11 @@ class Dynamics:
             return command
 
         elif self.action_type == ACTION_TYPE.POSITION:
+            # Now position commands contain [yaw, x, y, z] with direct yaw control
             command = th.hstack([
-                command[:, :1] * self._normal_params["yaw"].half + self._normal_params["yaw"].mean,
-                command[:, 1:] * self._normal_params["velocity"].half + self._normal_params["velocity"].mean
-            ]
-            )
+                command[:, :1] * self._normal_params["yaw"].half + self._normal_params["yaw"].mean,  # yaw angle
+                command[:, 1:] * self._normal_params["velocity"].half + self._normal_params["velocity"].mean  # position x,y,z
+            ])
             return command
 
         else:

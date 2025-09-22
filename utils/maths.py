@@ -38,12 +38,67 @@ class Quaternion:
             return (self * Quaternion(th.tensor(0), *other) * self.conjugate()).imag
 
     def inv_rotate(self, other):
+        """
+        rotate to local
+        """
         if isinstance(other, Quaternion):
             # quaternion multiplication
             return self.conjugate() * other
         elif other.shape[0] == 3:
             # vector rotation
             return (self.conjugate() * Quaternion(th.tensor(0), *other) * self).imag
+
+    def extract_yaw_only(self):
+        """
+        提取当前四元数中只保留 yaw（绕 Z）的部分，返回一个新的 Quaternion 实例。
+        """
+        # yaw = atan2(2(wz + xy), 1 - 2(y² + z²))
+        yaw = th.atan2(2 * (self.w * self.z + self.x * self.y),
+                       1 - 2 * (self.y ** 2 + self.z ** 2))
+        half_yaw = yaw / 2
+
+        w = th.cos(half_yaw)
+        z = th.sin(half_yaw)
+        x = th.zeros_like(w)
+        y = th.zeros_like(w)
+        return Quaternion(w, x, y, z)
+
+    def extract_pitch_roll(self):
+        """
+        提取当前四元数中只保留 pitch 和 roll 的部分，返回一个新的 Quaternion 实例。
+        """
+        # pitch = atan2(2(wx + yz), 1 - 2(x² + z²))
+        # roll = atan2(2(wy - xz), 1 - 2(y² + z²))
+        pitch = th.atan2(2 * (self.w * self.y + self.x * self.z),
+                         1 - 2 * (self.x ** 2 + self.z ** 2))
+        roll = th.atan2(2 * (self.w * self.x - self.y * self.z),
+                        1 - 2 * (self.y ** 2 + self.z ** 2))
+
+        half_pitch = pitch / 2
+        half_roll = roll / 2
+
+        w = th.cos(half_pitch) * th.cos(half_roll)
+        x = th.sin(half_roll) * th.cos(half_pitch)
+        y = th.sin(half_pitch) * th.cos(half_roll)
+        z = th.sin(half_pitch) * th.sin(half_roll)
+
+        return Quaternion(w, x, y, z)
+
+    def world_to_head(self, vec: th.Tensor) -> th.Tensor:
+        """
+        将世界坐标系中的向量 vec 投影到当前四元数定义的航迹坐标系下（仅考虑 yaw）
+        """
+        q_yaw = self.extract_yaw_only()
+        return (q_yaw.conjugate() * Quaternion(th.tensor(0.0, device=vec.device), *vec) * q_yaw).imag
+
+    def local_to_head(self, vec: th.Tensor) -> th.Tensor:
+        """
+        将局部坐标系中的向量 vec 映射到航迹坐标系下：
+        先从 local → world，再从 world → heading
+        """
+        v_world = self.rotate(vec)
+        q_yaw = self.extract_yaw_only()
+        return (q_yaw.conjugate() * Quaternion(th.tensor(0, device=vec.device), *v_world) * q_yaw).imag
 
     def transform(self, other):
         return self.inv_rotate(other)

@@ -4,6 +4,13 @@ from typing import Union, Optional, Dict
 from .maths import Quaternion
 from abc import abstractmethod
 
+rotation_matrices = th.tensor([
+    [[1, 0, 0], [0, 1, 0], [0, 0, 1]],  # 0°
+    [[0, -1, 0], [1, 0, 0], [0, 0, 1]],  # 90°
+    [[-1, 0, 0], [0, -1, 0], [0, 0, 1]],  # 180°
+    [[0, 1, 0], [-1, 0, 0], [0, 0, 1]]  # 270°
+], dtype=th.float32)
+
 
 class StateRandomizer:
     def __init__(self,
@@ -141,9 +148,12 @@ class NormalStateRandomizer(StateRandomizer):
 
 
 class TargetUniformRandomizer(UniformStateRandomizer):
-    def __init__(self, min_dis=0.5, max_dis=10.0, *args, **kwargs):
+    def __init__(self, min_dis=0.5, max_dis=10.0, test=False, *args, **kwargs):
         self.min_dis = min_dis
         self.max_dis = max_dis
+        self.test = test
+        if self.test:
+            self.current_generate_index = 0
         super().__init__(*args, **kwargs)
         
     def _generate(self, num, **kwargs) -> tuple:
@@ -160,14 +170,20 @@ class TargetUniformRandomizer(UniformStateRandomizer):
             x, y, z = vector[:, 0], vector[:, 1], vector[:, 2]
 
             # Calculate yaw (arctan2 handles the quadrant correctly)
-            yaw = th.arctan2(y, x)
-            yaw = th.arccos(x / vector[:,:2].norm(dim=1)) * y.sign()
+            y_sign = th.where(y.sign()>=0, 1, -1)
+            yaw = th.arccos(x / vector[:,:2].norm(dim=1)) * y_sign
             # Calculate pitch
             norm = th.linalg.norm(vector)  # Magnitude of the vector
             pitch = th.arcsin(z / norm)
             return yaw, pitch
         target_position = kwargs["position"]
-        position = ((2 * th.rand(num, *self.position.half.shape) - 1) * self.position.half.unsqueeze(0))
+        if not self.test:
+            position = ((2 * th.rand(num, *self.position.half.shape) - 1) * self.position.half.unsqueeze(0))
+        else:
+            position = th.tile(kwargs["velocity"].unsqueeze(0), (num, 1))
+            position = (rotation_matrices[self.current_generate_index % 4] @ position.T).T
+            self.current_generate_index += 1
+
         position_norm = position.norm(dim=1, keepdim=True)
         # Create scaling factor
         scale_factor = th.ones_like(position_norm)
@@ -181,10 +197,14 @@ class TargetUniformRandomizer(UniformStateRandomizer):
         direction = target_position.unsqueeze(0)-position
         yaw, pitch = calculate_yaw_pitch(direction)
         orientation = th.stack([th.zeros(num), pitch*0, yaw], dim=1) + (2 * th.rand(num, 3) - 1) * self.orientation.half # yaw, pitch, roll
-        velocity = (2 * th.rand(num, 3) - 1) * self.velocity.half + self.velocity.mean
+        if "velocity" in kwargs.keys():
+            velocity = th.tile(kwargs["velocity"].unsqueeze(0), (num, 1)) + (2 * th.rand(num, 3) - 1) * self.velocity.half
+        else:
+            velocity = (2 * th.rand(num, 3) - 1) * self.velocity.half + self.velocity.mean
         angular_velocity = (2 * th.rand(num, 3) - 1) * self.angular_velocity.half + self.angular_velocity.mean
 
         return position, orientation, velocity, angular_velocity
+
 
 class UnionRandomizer:
     Randomizer_alias = {

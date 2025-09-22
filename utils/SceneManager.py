@@ -129,12 +129,9 @@ class SceneManager(ABC):
             }
 
         if sensor_settings is None:
-            sensor_settings = [{
-                "sensor_type": habitat_sim.SensorType.DEPTH,
-                "uuid": "depth",
-                "resolution": [64, 64],
-            }]
+            sensor_settings = []
 
+        self.render_settings = render_settings
         self._get_datasets_info(path)
         self.root_path = path
         self.num_scene = num_scene
@@ -142,7 +139,6 @@ class SceneManager(ABC):
         self.num_agent = self.num_agent_per_scene * self.num_scene
         self.seed = seed
         self.sensor_settings = sensor_settings
-        self.render_settings = render_settings
         self.reset_settings = reset_settings
         self.noise_settings = noise_settings
         self.obj_settings = obj_settings
@@ -161,11 +157,12 @@ class SceneManager(ABC):
         if obj_settings:
             obj_path = self.obj_settings.get("path", "static")
             _objLoader = SimpleDataLoader(
-                ChildrenPathDataset(f"VisFly/configs/obj/{obj_path}", type='obj', semantic=False), batch_size=num_scene, shuffle=True
+                ChildrenPathDataset(obj_path, type='obj', semantic=False), batch_size=num_scene, shuffle=True
             )
             self._obj_loader = _objLoader
         self.dynamic_object_position = [[None] for _ in range(num_agent_per_scene*num_scene)]
         self.dynamic_object_velocity = [[None] for _ in range(num_agent_per_scene*num_scene)]
+        self.dynamic_object_acceleration = [[None] for _ in range(num_agent_per_scene*num_scene)]
 
         self.scenes: List[habitat_sim.scene] = [None for _ in range(num_scene)]
         self.agents: List[List[habitat_sim.agent]] = [[] for _ in range(num_scene)]
@@ -220,7 +217,10 @@ class SceneManager(ABC):
         index = parts.index("datasets") + 1
         root_addr = os.path.dirname(__file__) + "/../"
         self.datasets = parts[index]
-        self._drone_path = [root_addr + "datasets/visfly-beta/configs/agents/DJI_Mavic_" + c + ".object_config.json" for c in ["red", "green", "blue", "orange"]]
+        if self.render_settings and not self.render_settings.get("FOV", False):
+            self._drone_path = [root_addr + "datasets/visfly-beta/configs/agents/DJI_Mavic_" + c + ".object_config.json" for c in ["red", "green", "blue", "orange"]]
+        else:
+            self._drone_path = [root_addr + "datasets/visfly-beta/configs/agents/DJI_Mavic_" + c + "_FOV.object_config.json" for c in ["red", "green", "blue", "orange"]]
         if "hm3d" in parts[index].lower():
             self.datasets_name = "hm3d"
             self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
@@ -568,25 +568,12 @@ class SceneManager(ABC):
 
         # set the render camera pose
         if self.render_settings["mode"] == "follow":
-            if self.render_settings["view"] == "back" or self.render_settings["view"] == "near":
-                if self.render_settings["view"] == "back":
-                    rela_pos = eye_pos_follow_back
-                elif self.render_settings["view"] == "near":
-                    rela_pos = eye_pos_follow_near
-                for scene_id in range(self.num_scene):
-                    obj = self.agents[scene_id][0].get_state().position if self.render_settings["position"] is None else std_to_habitat(self.render_settings["position"], None)[0]
-                    camera_pose = calc_camera_transform(
-                        eye_translation=(self.agents[scene_id][0].scene_node.transformation * mn.Vector4(rela_pos, 1)).xyz,
-                        lookat=obj
-                    )
-                    self._render_camera[scene_id].set_state(
-                        habitat_sim.AgentState(
-                            rotation=R.from_matrix(
-                                np.array(camera_pose)[:3, :3]
-                            ).as_quat(),
-                            position=camera_pose.translation,
-                        )
-                    )
+            if self.render_settings["view"] == "back":
+                rela_pos = eye_pos_follow_back
+            elif self.render_settings["view"] == "near":
+                rela_pos = eye_pos_follow_near
+            elif self.render_settings["view"] == "custom":
+                rela_pos = mn.Vector3(std_to_habitat(self.render_settings["position"], None)[0][0])
             else:
                 raise NotImplementedError
                 for scene_id in range(self.num_scene):
@@ -608,6 +595,43 @@ class SceneManager(ABC):
                         )
                     )
 
+            for scene_id in range(self.num_scene):
+                obj = self.agents[scene_id][0].get_state().position
+                camera_pose = calc_camera_transform(
+                    eye_translation=rela_pos + obj,
+                    lookat=obj
+                )
+                self._render_camera[scene_id].set_state(
+                    habitat_sim.AgentState(
+                        rotation=R.from_matrix(
+                            np.array(camera_pose)[:3, :3]
+                        ).as_quat(),
+                        position=camera_pose.translation,
+                    )
+                )
+        elif self.render_settings["mode"] == "object":
+            if self.render_settings["view"] == "back":
+                rela_pos = eye_pos_follow_back
+            elif self.render_settings["view"] == "near":
+                rela_pos = eye_pos_follow_near
+            elif self.render_settings["view"] == "custom":
+                rela_pos = std_to_habitat(self.render_settings["position"], None)[0][0]
+            else:
+                raise NotImplementedError
+            for scene_id in range(self.num_scene):
+                obj = std_to_habitat(self.dynamic_object_position[scene_id*self.num_agent_per_scene][:1], None)[0][0].squeeze()
+                camera_pose = calc_camera_transform(
+                    eye_translation=mn.Vector3((rela_pos + obj)),
+                    lookat=obj
+                )
+                self._render_camera[scene_id].set_state(
+                    habitat_sim.AgentState(
+                        rotation=R.from_matrix(
+                            np.array(camera_pose)[:3, :3]
+                        ).as_quat(),
+                        position=camera_pose.translation,
+                    )
+                )
         elif self.render_settings["mode"] == "fix":
             if self.render_settings["view"] == "top":
                 # fix the camera at the center top of the scene to observe the whole scene
@@ -950,6 +974,7 @@ class SceneManager(ABC):
     def _update_dynamics(self):
         self.dynamic_object_position = [obj_ctrl.position for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
         self.dynamic_object_velocity = [obj_ctrl.velocity for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
+        self.dynamic_object_acceleration = [obj_ctrl.acceleration for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
     # @property
     # def dynamic_object_position(self):
     #     if self.obj_settings:
