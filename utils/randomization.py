@@ -12,6 +12,27 @@ rotation_matrices = th.tensor([
 ], dtype=th.float32)
 
 
+def calculate_yaw_pitch(vector):
+    """s
+    Calculate the yaw and pitch angles of a vector.
+
+    Args:
+        vector (np.ndarray): A 3D vector [x, y, z].
+
+    Returns:
+        tuple: (yaw, pitch) in radians.
+    """
+    x, y, z = vector[:, 0], vector[:, 1], vector[:, 2]
+
+    # Calculate yaw (arctan2 handles the quadrant correctly)
+    y_sign = th.where(y.sign() >= 0, 1, -1)
+    yaw = th.arccos(x / vector[:, :2].norm(dim=1)) * y_sign
+    # Calculate pitch
+    norm = th.linalg.norm(vector)  # Magnitude of the vector
+    pitch = th.arcsin(z / norm)
+    return yaw, pitch
+
+
 class StateRandomizer:
     def __init__(self,
                  position,
@@ -85,6 +106,7 @@ class UniformStateRandomizer(StateRandomizer):
                  orientation={"mean": [0., 0., 0.], "half": [0., 0., 0.]},  # euler angle
                  velocity={"mean": [0., 0., 0.], "half": [0., 0., 0.]},
                  angular_velocity={"mean": [0., 0., 0.], "half": [0., 0., 0.]},
+                 heading=False,
                  seed: int = 42,
                  is_collision_func: Optional[callable] = None,
                  scene_id: Optional[int] = None,
@@ -106,9 +128,19 @@ class UniformStateRandomizer(StateRandomizer):
         self.velocity = Uniform(**velocity)
         self.angular_velocity = Uniform(**angular_velocity)
 
+        self.heading = heading
+
     def _generate(self, num, **kwargs) -> tuple:
-        position = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.position.half.unsqueeze(0) + self.position.mean.unsqueeze(0)
-        orientation = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.orientation.half.unsqueeze(0) + self.orientation.mean.unsqueeze(0)
+        # position = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.position.half.unsqueeze(0) + self.position.mean.unsqueeze(0)
+        mean = self.position.mean.unsqueeze(0)
+        half = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.position.half.unsqueeze(0)
+        position = mean + half
+        if self.heading:
+            direction = -half
+            yaw, pitch = calculate_yaw_pitch(direction)
+            orientation = th.stack([th.zeros(num), pitch * 0, yaw], dim=1) + (2 * th.rand(num, 3) - 1) * self.orientation.half  # yaw, pitch, roll
+        else:
+            orientation = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.orientation.half.unsqueeze(0) + self.orientation.mean.unsqueeze(0)
         velocity = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.velocity.half.unsqueeze(0) + self.velocity.mean.unsqueeze(0)
         angular_velocity = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.angular_velocity.half.unsqueeze(0) + self.angular_velocity.mean.unsqueeze(0)
         return position, orientation, velocity, angular_velocity
@@ -157,25 +189,7 @@ class TargetUniformRandomizer(UniformStateRandomizer):
         super().__init__(*args, **kwargs)
         
     def _generate(self, num, **kwargs) -> tuple:
-        def calculate_yaw_pitch(vector):
-            """s
-            Calculate the yaw and pitch angles of a vector.
 
-            Args:
-                vector (np.ndarray): A 3D vector [x, y, z].
-
-            Returns:
-                tuple: (yaw, pitch) in radians.
-            """
-            x, y, z = vector[:, 0], vector[:, 1], vector[:, 2]
-
-            # Calculate yaw (arctan2 handles the quadrant correctly)
-            y_sign = th.where(y.sign()>=0, 1, -1)
-            yaw = th.arccos(x / vector[:,:2].norm(dim=1)) * y_sign
-            # Calculate pitch
-            norm = th.linalg.norm(vector)  # Magnitude of the vector
-            pitch = th.arcsin(z / norm)
-            return yaw, pitch
         target_position = kwargs["position"]
         if not self.test:
             position = ((2 * th.rand(num, *self.position.half.shape) - 1) * self.position.half.unsqueeze(0))

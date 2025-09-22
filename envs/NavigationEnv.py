@@ -235,7 +235,7 @@ class NavigationEnv2(DroneGymEnvsBase):
             "r_collision": r_collision.clone().detach(),
             "r_success": r_success.clone().detach()
         }
-        return reward, metrics
+        return reward
 
     def get_analytical_reward(self,
                               dyn,

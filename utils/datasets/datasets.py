@@ -485,11 +485,11 @@ if __name__ == "__main__":
     elif args.scene == "box10_wall":
         object_margin = np.array([[3,0,0],[3,0,8]])
     elif args.scene == "box15_wall":
-        object_margin = np.array([[2, 0, 0], [15, 0, 8]])
+        object_margin = np.array([[2, 0, 0], [2, 0, 8]])
     g = SceneGenerator(
         path="datasets/visfly-beta",
         num=args.quantity,
-        name=args.name if args.name is not None else args.scene,
+        name=args.name,
         setting=SceneGeneratorSetting(
             object_dense=args.density,
             object_scale=0,

@@ -213,27 +213,30 @@ class SceneManager(ABC):
         # self.load_scenes()
 
     def _get_datasets_info(self, path):
-        parts = path.split("/")
-        index = parts.index("datasets") + 1
         root_addr = os.path.dirname(__file__) + "/../"
-        self.datasets = parts[index]
+        parts = path.split("/")
+        if len(parts) >= 2:
+            index = parts.index("datasets") + 1
+            self.datasets = parts[index]
+        else:
+            self.datasets = parts[0]
         if self.render_settings and not self.render_settings.get("FOV", False):
             self._drone_path = [root_addr + "datasets/visfly-beta/configs/agents/DJI_Mavic_" + c + ".object_config.json" for c in ["red", "green", "blue", "orange"]]
         else:
             self._drone_path = [root_addr + "datasets/visfly-beta/configs/agents/DJI_Mavic_" + c + "_FOV.object_config.json" for c in ["red", "green", "blue", "orange"]]
-        if "hm3d" in parts[index].lower():
+        if "hm3d" in self.datasets.lower():
             self.datasets_name = "hm3d"
             self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
-        elif "visfly" in parts[index].lower():
+        elif "visfly" in self.datasets.lower():
             self.datasets_name = "visfly-beta"
             self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
-        elif "spy" in parts[index].lower():
+        elif "spy" in self.datasets.lower():
             self.datasets_name = "spy_datasets"
             self._datasets_path = root_addr + "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
-        elif "hssd" in parts[index].lower():
+        elif "hssd" in self.datasets.lower():
             self.datasets_name = "hssd-hab"
             self._datasets_path = root_addr + "datasets/hssd-hab/hssd-hab.scene_dataset_config.json"
-        elif "mp3d" in parts[index].lower():
+        elif "mp3d" in self.datasets.lower():
             self.datasets_name = "mp3d"
             self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
         else:
