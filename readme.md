@@ -1,3 +1,7 @@
+![Python Version](https://img.shields.io/badge/Python-3.9-%233572A5?logo=python)
+![Ubuntu Version](https://img.shields.io/badge/Ubuntu-20.04-%23E95420?logo=ubuntu)
+![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C?logo=pytorch)
+
 # Introduction
 VisFly is a versatile quadrotor simulator specialized for **visual-based** flight using differentiable simulation. 
 As we all know, because of the high requirement of hardware for rendering the vision, the shortage of data is one significant limitations that hinder the development of intelligent drone. 
