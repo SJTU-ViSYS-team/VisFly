@@ -622,6 +622,7 @@ class FlexibleExtractor(CustomBaseFeaturesExtractor):
 
     def _build(self, observation_space, net_arch, activation_fn):
         self._features_dim = 0
+        print("features dim:\n")
         for key, value in net_arch.items():
             if "semantic" in key or "color" in key or "depth" in key:
                 _image_features_dim = set_cnn_feature_extractor(self, key, observation_space[key], net_arch.get(key, {}), activation_fn)
@@ -629,7 +630,8 @@ class FlexibleExtractor(CustomBaseFeaturesExtractor):
             elif "state" in key:
                 _state_features_dim = set_mlp_feature_extractor(self, key, observation_space[key], net_arch.get(key, {}), activation_fn)
                 self._features_dim += _state_features_dim
-
+            print(key, ":", self._features_dim)
+            # print each feature extractor name and its output dim
 
 class StateTargetExtractor(CustomBaseFeaturesExtractor):
     def __init__(self,

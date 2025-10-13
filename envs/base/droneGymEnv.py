@@ -32,6 +32,7 @@ class DroneGymEnvsBase(VecEnv):
             sensor_kwargs: Optional[List] = [],
             tensor_output: bool = True,
             is_train: bool = False,
+            is_collision_reset: bool = True,
     ):
 
         super(VecEnv, self).__init__()
@@ -69,6 +70,7 @@ class DroneGymEnvsBase(VecEnv):
 
         self.tensor_output = tensor_output
         self.is_train = is_train
+        self.is_collision_reset = is_collision_reset
 
         # key interference of gym env
         state_size = 3 + 3+ 3 +(3 if self.envs.dynamics.angular_output_type == "euler" else (4 if self.envs.dynamics.angular_output_type == "quaternion" else 6))
@@ -166,7 +168,7 @@ class DroneGymEnvsBase(VecEnv):
 
         # update collision, timeout _done
         self._episode_done = self._episode_done | self._success | self._failure | \
-                             self.is_collision
+                             (self.is_collision if self.is_collision_reset else self.is_out_bounds)
         # self._episode_done = self._episode_done | self._success | self._failure
 
         self._done = self._episode_done | (self._step_count >= self.max_episode_steps)
@@ -458,6 +460,10 @@ class DroneGymEnvsBase(VecEnv):
     @property
     def is_collision(self):
         return self.envs.is_collision
+
+    @property
+    def is_out_bounds(self):
+        return self.envs.is_out_bounds
 
     @property
     def done(self):

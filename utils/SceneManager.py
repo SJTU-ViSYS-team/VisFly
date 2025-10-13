@@ -390,7 +390,7 @@ class SceneManager(ABC):
             col_record = self.scenes[scene_id].get_closest_collision_point(
                 pt=self.agents[scene_id][agent_id].scene_node.translation,
                 max_search_radius=sensitive_radius,
-                is_object_collidable=False,
+                is_object_collidable=True,
             )
             self._collision_point[scene_id][agent_id], self._is_out_bounds[scene_id][agent_id] = col_record.hit_pos, col_record.is_out_bound
 
@@ -434,7 +434,7 @@ class SceneManager(ABC):
         if hab_positions is None:
             hab_positions, _ = std_to_habitat(std_positions, None)
         min_distance = np.empty(len(hab_positions), dtype=np.float32)
-        is_in_bounds = np.empty(len(hab_positions), dtype=bool)
+        is_out_bounds = np.empty(len(hab_positions), dtype=bool)
         for indice, hab_position in enumerate(hab_positions):
             col_record = \
                 self.scenes[scene_id].get_closest_collision_point(
@@ -443,8 +443,8 @@ class SceneManager(ABC):
                 )
 
             min_distance[indice] = np.linalg.norm((col_record.hit_pos - hab_position))
-            is_in_bounds[indice] = not col_record.is_out_bound
-        return (min_distance < uav_radius) & is_in_bounds
+            is_out_bounds[indice] = col_record.is_out_bound
+        return (min_distance < uav_radius) | is_out_bounds
 
     def get_collision_point(self, indices=None):
         if indices is None:

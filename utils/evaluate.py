@@ -177,7 +177,7 @@ class TestBase:
         raise NotImplementedError
 
     # @abstractmethod
-    def play(self, render_name: Union[List[str], None] = "video",is_sub_video=False):
+    def play(self, render_name: Union[List[str], None] = "video",is_sub_video=True):
         """
         how to play the video
         """

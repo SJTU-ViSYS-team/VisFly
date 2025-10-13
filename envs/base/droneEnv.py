@@ -31,6 +31,7 @@ class DroneEnvsBase:
             multi_drone: bool = False,
             device: Optional[Type[th.device]] = th.device("cpu"),
 
+
     ):
         self.device = device
         self.seed = seed
@@ -40,6 +41,7 @@ class DroneEnvsBase:
         self._collision_dis = None
         self._collision_point = None
         self._collision_vector = None
+        self._is_out_bounds = None
 
         self.uav_radius = uav_radius
 
@@ -405,6 +407,10 @@ class DroneEnvsBase:
     @property
     def is_collision(self):
         return self._is_collision
+
+    @property
+    def is_out_bounds(self):
+        return self._is_out_bounds
 
     # @property
     # def closest_obstacle_dis(self):
