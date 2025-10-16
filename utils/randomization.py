@@ -52,10 +52,9 @@ class StateRandomizer:
         self.is_collision_func = is_collision_func
         self.device = device
         self.scene_id = scene_id
-        # self.set_seed(seed)
 
     @abstractmethod
-    def _generate(self, num) -> tuple:
+    def _generate(self, num, *args, **kwargs) -> tuple:
         pass
 
     def generate(self, num, **kwargs):
@@ -114,7 +113,9 @@ class UniformStateRandomizer(StateRandomizer):
                  seed: int = 42,
                  is_collision_func: Optional[callable] = None,
                  scene_id: Optional[int] = None,
-                 device: th.device = th.device("cpu")
+                 device: th.device = th.device("cpu"),
+                 test: bool = False,
+                 xyz_num: Optional[list] = None,
                  ):
         super().__init__(
             position=position,
@@ -124,7 +125,7 @@ class UniformStateRandomizer(StateRandomizer):
             seed=seed,
             is_collision_func=is_collision_func,
             scene_id=scene_id,
-            device=device
+            device=device,
         )
 
         self.position = Uniform(**position)
@@ -134,11 +135,26 @@ class UniformStateRandomizer(StateRandomizer):
 
         self.heading = heading
 
+        self.test = test
+
+        if test:
+            get_vector = lambda x: th.linspace(-1, 1, x)
+            x,y,z = th.meshgrid(
+                get_vector(xyz_num[0]),
+                get_vector(xyz_num[1]),
+                get_vector(xyz_num[2]),
+                indexing='ij')
+            self.base = th.stack([x.flatten(), y.flatten(), z.flatten()], dim=1)
+            self.current_generate_index = 0
+
     def _generate(self, num, **kwargs) -> tuple:
         # position = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.position.half.unsqueeze(0) + self.position.mean.unsqueeze(0)
         mean = self.position.mean.unsqueeze(0)
         half = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.position.half.unsqueeze(0)
         position = mean + half
+        if self.test:
+            position = self.base[self.current_generate_index % self.base.shape[0], :].unsqueeze(0) * self.position.half.unsqueeze(0) + self.position.mean.unsqueeze(0)
+            self.current_generate_index += 1
         if self.heading:
             direction = -half
             yaw, pitch = calculate_yaw_pitch(direction)

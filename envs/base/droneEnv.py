@@ -173,7 +173,7 @@ class DroneEnvsBase:
                     device=self.device,
                     is_collision_func=self.sceneManager.get_point_is_collision,
                     scene_id=i,
-                    kwargs=generator_kwargs[0]
+                    kwargs=generator_kwargs[0],
                 )
                 for j in range(self.sceneManager.num_agent_per_scene):
                     stateGenerators.append(generator)
