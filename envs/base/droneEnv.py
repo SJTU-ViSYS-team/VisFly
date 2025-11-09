@@ -83,6 +83,7 @@ class DroneEnvsBase:
             random_kwargs
         )
         self._scene_iter = random_kwargs.get("scene_iter", False)
+        self._is_update_approaching_info = scene_kwargs.get("update_approaching_info", False)
 
         self._create_bbox()
         self._sensor_list = [sensor["uuid"] for sensor in sensor_kwargs] if sensor_kwargs is not None else []
@@ -352,6 +353,8 @@ class DroneEnvsBase:
         self._collision_vector = (self._collision_point - self.position)
         self._collision_dis = (self._collision_vector - 0).norm(dim=1)
         self._is_collision = (self._collision_dis < self.uav_radius) | self._is_out_bounds
+        if self._is_update_approaching_info:
+            self.sceneManager.update_approaching_info(self.velocity)
 
     def step(self, action):
         self.dynamics.step(action)
@@ -455,6 +458,16 @@ class DroneEnvsBase:
     @property
     def angular_acceleration(self):
         return self.dynamics.angular_acceleration
+
+    @property
+    def approaching_point(self):
+        points = th.empty((self.dynamics.num, 3), device=self.device)
+        for i, point in enumerate(self.sceneManager.approaching_point):
+            if point is not None:
+                points[i] = th.tensor(point)
+            else:
+                points[i] = self.position[i] + self.velocity[i] / (self.velocity[i].norm()+1e-6) * 100.0
+        return points
 
     @property
     def collision_point(self):

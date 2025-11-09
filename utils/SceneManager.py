@@ -198,6 +198,7 @@ class SceneManager(ABC):
             self.render_settings["resolution"] = self.render_settings.get("resolution", [256, 256])
             self.render_settings["position"] = self.render_settings.get("position", None)
             self.render_settings["collision"] = self.render_settings.get("collision", False)
+            self.render_settings["approaching"] = self.render_settings.get("approaching", False)
 
             if self.render_settings["position"] is not None:
                 self.render_settings["position"] = th.as_tensor(self.render_settings["position"], dtype=th.float32)
@@ -208,9 +209,21 @@ class SceneManager(ABC):
 
         self.trajectory = [[[] for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
         self._collision_point = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
+        self._approaching_point = [None for _ in range(num_scene * num_agent_per_scene)]
         self._is_out_bounds = [[False for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
 
         # self.load_scenes()
+    def update_approaching_info(self, directions):
+        for i, direction in enumerate(directions):
+            scene_id, agent_id = i // self.num_agent_per_scene, i % self.num_agent_per_scene
+            hab_point = self.agents[scene_id][agent_id].scene_node.translation
+            hab_vector = mn.Vector3(std_to_habitat(direction, None)[0]).normalized()
+            ray = habitat_sim.geo.Ray(
+                origin=hab_point,
+                direction=hab_vector,
+            )
+            hit = self.scenes[scene_id].cast_ray(ray, max_distance=100.)
+            self._approaching_point[i] = hit.hits[0].point if len(hit.hits) > 0 else None
 
     def _get_datasets_info(self, path):
         root_addr = os.path.dirname(__file__) + "/../"
@@ -569,6 +582,21 @@ class SceneManager(ABC):
                                 factor=np.linalg.norm(p2-p1)/2, color1=ColorSet6[2], color2=ColorSet6[0])
                         )
 
+        if self.render_settings["approaching"]:
+            for i in range(self.num_scene * self.num_agent_per_scene):
+                scene_id = i // self.num_agent_per_scene
+                agent_id = i % self.num_agent_per_scene
+                if self._approaching_point[i] is not None:
+                    p1 = self._approaching_point[i]
+                    if p1 is None:
+                        continue
+                    p2 = np.array(self.agents[scene_id][agent_id].scene_node.translation)
+                    self._line_mgrs[scene_id].draw_transformed_line(
+                        p2, p1,
+                        color=color_consequence(
+                            factor=np.linalg.norm(p2 - p1) / 10, color1=ColorSet2[2], color2=ColorSet2[0])
+                    )
+
         # set the render camera pose
         if self.render_settings["mode"] == "follow":
             if self.render_settings["view"] == "back":
@@ -833,7 +861,7 @@ class SceneManager(ABC):
         sim_cfg.scene_dataset_config_file = \
             self._datasets_path
         # "datasets/replica_cad_dataset/replicaCAD.scene_dataset_config.json"
-        sim_cfg.enable_physics = False
+        sim_cfg.enable_physics = True
         # sim_cfg.scene_id = "None" # debug
         sim_cfg.use_semantic_textures = False  # debug
         # sim_cfg.enable_physics = True # debug
@@ -973,6 +1001,10 @@ class SceneManager(ABC):
     @property
     def collision_point(self):
         return self._collision_point
+
+    @property
+    def approaching_point(self):
+        return self._approaching_point
 
     def _update_dynamics(self):
         self.dynamic_object_position = [obj_ctrl.position for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]

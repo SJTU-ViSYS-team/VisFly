@@ -240,7 +240,7 @@ class TargetUniformRandomizer(UniformStateRandomizer):
         return position, orientation, velocity, angular_velocity
 
 
-class UnionRandomizer:
+class UnionRandomizer(StateRandomizer):
     Randomizer_alias = {
         "Uniform": UniformStateRandomizer,
         "Normal": NormalStateRandomizer
@@ -249,18 +249,22 @@ class UnionRandomizer:
     def __init__(
             self,
             randomizers_kwargs: list,
-            device,
-            is_collision_func=None,
-            scene_id=0,
+            # device,
+            # is_collision_func=None,
+            # scene_id=0,
+            **kwargs
     ):
+        super().__init__(position=None, orientation=None, velocity=None, angular_velocity=None, **kwargs)
         self.randomizers = []
-        for randomizers in randomizers_kwargs:
+        for randomizer in randomizers_kwargs:
+            randomizer_cls = randomizer["class"]
+            randomizer_kwargs = randomizer["kwargs"] | kwargs
             self.randomizers.append(
-                self.Randomizer_alias[randomizers["class"]](
-                    device=device,
-                    is_collision_func=is_collision_func,
-                    scene_id=scene_id,
-                    **randomizers["kwargs"]
+                self.Randomizer_alias[randomizer_cls](
+                    # device=device,
+                    # is_collision_func=is_collision_func,
+                    # scene_id=scene_id,
+                    **randomizer_kwargs
                 )
             )
 
@@ -271,7 +275,7 @@ class UnionRandomizer:
         for randomizer in self.randomizers:
             randomizer.to(device)
 
-    def _generate(self, num) -> tuple:
+    def _generate(self, num, **kwargs) -> tuple:
         position, orientation, velocity, angular_velocity = [], [], [], []
         for randomizer in self.randomizers:
             pos, ori, vel, ang_vel = randomizer.generate(num)
@@ -283,21 +287,7 @@ class UnionRandomizer:
         position, orientation, velocity, angular_velocity = th.stack(position), th.stack(orientation), th.stack(velocity), th.stack(angular_velocity)
         select_randomizer_index = th.randint(0, len(self.randomizers), (num,))
         row = th.arange(num)
-        return position[row, select_randomizer_index], orientation[row, select_randomizer_index], velocity[row, select_randomizer_index], angular_velocity[row, select_randomizer_index]
-
-    def safe_generate(self, num) -> tuple:
-        position, orientation, velocity, angular_velocity = [], [], [], []
-        for randomizer in self.randomizers:
-            pos, ori, vel, ang_vel = randomizer.safe_generate(num)
-            position.append(pos)
-            orientation.append(ori)
-            velocity.append(vel)
-            angular_velocity.append(ang_vel)
-
-        position, orientation, velocity, angular_velocity = th.stack(position), th.stack(orientation), th.stack(velocity), th.stack(angular_velocity)
-        select_randomizer_index = th.randint(0, len(self.randomizers), (num,))
-        row = th.arange(num)
-        return position[select_randomizer_index, row, :], orientation[select_randomizer_index, row, :], velocity[select_randomizer_index, row, :], angular_velocity[select_randomizer_index, row, :]
+        return position[select_randomizer_index, row], orientation[select_randomizer_index, row], velocity[select_randomizer_index, row], angular_velocity[select_randomizer_index, row]
 
 
 def load_generator(cls, kwargs, is_collision_func=None, scene_id=None, device="cpu"):

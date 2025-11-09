@@ -193,6 +193,8 @@ class SceneGenerator:
                     scene_json["default_lighting"] = "lighting/box10_0"
                 elif "box15" in self.setting.stage:
                     scene_json["default_lighting"] = "lighting/box15_0"
+                elif "box30" in self.setting.stage:
+                    scene_json["default_lighting"] = "lighting/box30_0"
                 else:
                     scene_json["default_lighting"] = "default"
 
@@ -227,6 +229,8 @@ class SceneGenerator:
             return [[0, -10, 0], [20, 10, 8.]]
         elif "box15_wall" in stage_name:
             return [[0, -15, 0], [30, 15, 8.]]
+        elif "box30_wall" in stage_name:
+            return [[0, -30, 0], [60, 30, 8.]]
         scene_json = empty_scene.copy()
         scene_json["stage_instance"]["template_name"] = stage_name
         scene_save_path = f"{self.save_path}/temp.scene_instance.json"
@@ -264,6 +268,8 @@ class SceneGenerator:
             return "stages/box10_wall"
         elif self.setting.stage == "box15_wall":
             return "stages/box15_wall"
+        elif self.setting.stage == "box30_wall":
+            return "stages/box30_wall"
         elif self.setting.stage == "random":
             pass
         else:
@@ -486,6 +492,8 @@ if __name__ == "__main__":
         object_margin = np.array([[3,0,0],[3,0,8]])
     elif args.scene == "box15_wall":
         object_margin = np.array([[2, 0, 0], [2, 0, 8]])
+    elif args.scene == "box30_wall":
+        object_margin = np.array([[1, 1, 0], [1, 1, 8]])
     g = SceneGenerator(
         path="datasets/visfly-beta",
         num=args.quantity,

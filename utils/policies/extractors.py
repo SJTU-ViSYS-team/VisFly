@@ -515,6 +515,7 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
             bn=net_arch.get("bn", False),
             ln=net_arch.get("ln", False),
             bias=net_arch.get("bias", True),
+            max_pool=net_arch.get("max_pool", 0)
         )
     modules.append(image_extractor)
     cache_net = nn.Sequential(*modules)

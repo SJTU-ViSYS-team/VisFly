@@ -44,6 +44,31 @@ def exponential_schedule(initial: float, decay: float) -> Callable[[float], floa
     return func
 
 
+def cosine_schedule(initial: float, final: float = 0., period=0.1) -> Callable[[float], float]:
+    """
+    Cosine learning rate schedule.
+
+    :param initial: Initial learning rate.
+    :param final: Final learning rate.
+    :param period: Period of cosine decay.
+    :return: schedule that computes
+      current learning rate depending on remaining progress
+    """
+
+    def func(progress_remaining: float) -> float:
+        """
+        Progress will decrease from 1 (beginning) to 0.
+
+        :param progress_remaining:
+        :return: current learning rate
+        """
+        import math
+        cos_inner = (math.pi * (1 - progress_remaining)) / period
+        return final + (initial - final) * (1 + math.cos(cos_inner)) / 2
+
+    return func
+
+
 def transfer_schedule(learning_rate: Union[dict, float]) -> Callable[[float], float]:
     """
     Transfer learning rate schedule.
@@ -54,7 +79,8 @@ def transfer_schedule(learning_rate: Union[dict, float]) -> Callable[[float], fl
     """
     class_alias = {
         'linear': linear_schedule,
-        'exponential': exponential_schedule
+        'exponential': exponential_schedule,
+        'cosine': cosine_schedule,
     }
     if isinstance(learning_rate, dict):
         schedule_class = class_alias[learning_rate['class']]
