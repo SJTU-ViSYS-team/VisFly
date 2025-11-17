@@ -194,7 +194,7 @@ class SceneGenerator:
                 elif "box15" in self.setting.stage:
                     scene_json["default_lighting"] = "lighting/box15_0"
                 elif "box30" in self.setting.stage:
-                    scene_json["default_lighting"] = "lighting/box30_0"
+                    scene_json["default_lighting"] = "lighting/box30_1"
                 else:
                     scene_json["default_lighting"] = "default"
 
