@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 from .dynamics import Dynamics
 from ...utils.ObjectManger import ObjectManager
@@ -42,6 +44,7 @@ class DroneEnvsBase:
         self._collision_point = None
         self._collision_vector = None
         self._is_out_bounds = None
+        self._once_collided = th.tensor([False]* (num_agent_per_scene * num_scene), device=self.device)
 
         self.uav_radius = uav_radius
 
@@ -201,9 +204,20 @@ class DroneEnvsBase:
                 )
 
         else:
-            raise ValueError("Len of State kwargs is not available.")
+            # raise a warning
+            warnings.warn(f"Length of state generator kwargs {len(generator_kwargs)} does not match, sequentially use the generators by order.")
+            for i in range(self.sceneManager.num_scene):
+                generator = load_generator(
+                    cls=state_generator_class,
+                    device=self.device,
+                    is_collision_func=self.sceneManager.get_point_is_collision,
+                    scene_id=i,
+                    kwargs=generator_kwargs[i%len(generator_kwargs)],
+                )
+                for j in range(self.sceneManager.num_agent_per_scene):
+                    stateGenerators.append(generator)
 
-        assert len(stateGenerators) == self.sceneManager.num_agent
+        # assert len(stateGenerators) == self.sceneManager.num_agent
 
         for state_generator in stateGenerators:
             state_generator.to(self.device)
@@ -245,7 +259,7 @@ class DroneEnvsBase:
         self.reset_agents(indices=None, state=state)
         return self.state, self.sensor_obs
 
-    def reset_agents(self, indices: Optional[List] = None, state=None) -> Tuple[Tensor, Optional[np.ndarray]]:
+    def reset_agents(self, indices: Optional[List] = None, state=None, pos_reset_by_state=False) -> Tuple[Tensor, Optional[np.ndarray]]:
         indices = indices if (indices is None or hasattr(indices, "__iter__")) else th.as_tensor([indices], device=self.device)
         motor_speed, thrust, t = None, None, None
         if state is not None:
@@ -262,13 +276,18 @@ class DroneEnvsBase:
                     pos, ori ,vel, ori_vel, motor_speed, thrust = state
                 else:
                     raise ValueError("State should be a tuple of 4 or 6 elements.")
+            if not pos_reset_by_state:
+                pos, _, _, _ = self._generate_state(indices)
         else:
             pos, ori, vel, ori_vel = self._generate_state(indices)
+
         self.dynamics.reset(pos=pos, ori=ori, vel=vel, ori_vel=ori_vel, motor_omega=motor_speed, thrusts=thrust, t=t, indices=indices)
         # if self.visual:
         self.sceneManager.reset_agents(std_positions=pos, std_orientations=ori, indices=indices)
         self.update_observation(indices=indices)
         self.update_collision(indices)
+
+        self._once_collided[indices] = False
 
     def reset_scenes(self, indices: Optional[List[int]] = None):
         agent_indices = ((th.tile(th.arange(self.sceneManager.num_agent_per_scene), (len(indices), 1))
@@ -352,7 +371,9 @@ class DroneEnvsBase:
 
         self._collision_vector = (self._collision_point - self.position)
         self._collision_dis = (self._collision_vector - 0).norm(dim=1)
-        self._is_collision = (self._collision_dis < self.uav_radius) | self._is_out_bounds
+        self._is_collision = (self._collision_dis < self.uav_radius) # | self._is_out_bounds
+
+        self._once_collided = self._once_collided | self._is_collision
         if self._is_update_approaching_info:
             self.sceneManager.update_approaching_info(self.velocity)
 
@@ -452,6 +473,10 @@ class DroneEnvsBase:
         return self.dynamics.full_state
 
     @property
+    def extend_state(self):
+        return self.dynamics.extend_state
+    
+    @property
     def acceleration(self):
         return self.dynamics.acceleration
 
@@ -480,6 +505,10 @@ class DroneEnvsBase:
     @property
     def collision_dis(self):
         return self._collision_dis
+
+    @property
+    def once_collided(self):
+        return self._once_collided
 
     @property
     def dynamic_object_position(self):

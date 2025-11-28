@@ -119,6 +119,7 @@ class SceneManager(ABC):
             reset_settings=None,
             noise_settings=None,
             obj_settings=None,
+            shuffle=True,
     ):
 
         if reset_settings is None:
@@ -150,7 +151,7 @@ class SceneManager(ABC):
         #     ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=True
         # , num_workers=0)
         _dataLoader = SimpleDataLoader(
-            ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=True
+            ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=shuffle
         )
         self._scene_loader = _dataLoader
 
@@ -578,8 +579,9 @@ class SceneManager(ABC):
                         p2 = np.array(self.agents[scene_id][agent_id].scene_node.translation)
                         self._line_mgrs[scene_id].draw_transformed_line(
                             p2, p1,
-                            color=color_consequence(
-                                factor=np.linalg.norm(p2-p1)/2, color1=ColorSet6[2], color2=ColorSet6[0])
+                            color=ColorSet6[2]
+                            # color_consequence(
+                            #     factor=np.linalg.norm(p2-p1)/2, color1=ColorSet6[2], color2=ColorSet6[0])
                         )
 
         if self.render_settings["approaching"]:

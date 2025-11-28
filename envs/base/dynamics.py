@@ -38,7 +38,8 @@ class Dynamics:
             integrator: str = "euler",
             drag_random: float = 0,
             cfg: str = "drone_state",
-            wind_settings: Optional[List] = [0,0,0]
+            wind_settings: Optional[List] = [0,0,0],
+            rotor_sim: bool = True,
     ):
         assert action_type in ["bodyrate", "thrust", "velocity", "position"]  # 对两个变量进行断言检查
         assert ori_output_type in ["quaternion", "euler"]
@@ -85,6 +86,7 @@ class Dynamics:
         self._drag_random = drag_random
         
         self.wind_velocity = None
+        self._rotor_sim = rotor_sim
         self._create_wind(wind_settings=wind_settings)
 
     def _init(self, cfg):
@@ -798,6 +800,21 @@ class Dynamics:
         ]
         )
 
+    @property
+    def extend_state(self):
+        return th.hstack(
+            [
+                self.position,
+                self.orientation,
+                self.velocity,
+                self.angular_velocity,
+                self.acceleration,
+                self.angular_acceleration,
+                self.motor_omega,
+                self.thrusts,
+                self.t.unsqueeze(1),
+            ]
+        )
     @property
     def R(self):
         return self._orientation.R

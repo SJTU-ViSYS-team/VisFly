@@ -167,8 +167,9 @@ class DroneGymEnvsBase(VecEnv):
         self._rewards += self._reward
 
         # update collision, timeout _done
-        self._episode_done = self._episode_done | self._success | self._failure | \
-                             (self.is_collision if self.is_collision_reset else self.is_out_bounds)
+        self._episode_done = self._episode_done | self._success | self._failure | self.is_out_bounds
+        if self.is_collision_reset:
+            self._episode_done = self._episode_done | self.is_collision
         # self._episode_done = self._episode_done | self._success | self._failure
 
         self._done = self._episode_done | (self._step_count >= self.max_episode_steps)
@@ -244,7 +245,7 @@ class DroneGymEnvsBase(VecEnv):
         else:
             _info["TimeLimit.truncated"] = False
 
-        _info["episode"]["extra"] = {}
+        _info["episode"]["extra"] = {"collision":self.envs.once_collided.clone().detach().cpu().numpy()}
 
         if self._indiv_rewards is not None:
             for key in self._indiv_rewards.keys():
@@ -313,7 +314,11 @@ class DroneGymEnvsBase(VecEnv):
     def reset_agent_by_id(self, agent_indices=None, state=None, reset_obs=None):
         assert ~(state is None and reset_obs is None) or (state is not None and reset_obs is not None)
         assert not isinstance(agent_indices, bool)
-        self.envs.reset_agents(agent_indices, state=state)
+        if state is None:
+            if hasattr(self, "replay_buffer") and self.replay_buffer.pos :
+                num = len(agent_indices) if agent_indices is not None else self.num_agent
+                state = self.replay_buffer.sample(num, env_indices=agent_indices)[-1]
+        self.envs.reset_agents(agent_indices, state=state, pos_reset_by_state=False)
         self.get_full_observation(agent_indices)
         self._reset_attr(indices=agent_indices)
         return self._observations
@@ -441,6 +446,9 @@ class DroneGymEnvsBase(VecEnv):
     def close(self):
         self.envs.close()
 
+    def set_replay_buffer(self, replay_buffer):
+        setattr(self, "replay_buffer", replay_buffer)
+
     @property
     def reward(self):
         return self._reward
@@ -525,6 +533,10 @@ class DroneGymEnvsBase(VecEnv):
     def full_state(self):
         return self.envs.full_state
 
+    @property
+    def extend_state(self):
+        return self.envs.extend_state
+    
     @property
     def dynamic_object_position(self):
         """
