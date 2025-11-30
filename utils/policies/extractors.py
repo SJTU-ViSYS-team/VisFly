@@ -631,6 +631,14 @@ class FlexibleExtractor(CustomBaseFeaturesExtractor):
             elif "state" in key:
                 _state_features_dim = set_mlp_feature_extractor(self, key, observation_space[key], net_arch.get(key, {}), activation_fn)
                 self._features_dim += _state_features_dim
+            elif "latent" in key:
+                obs_space = spaces.Box(
+                    low=-np.inf, high=np.inf, 
+                    shape=(observation_space["stoch"].shape[0]+observation_space["deter"].shape[0],), 
+                    dtype=np.float32
+                    )
+                _state_features_dim = set_mlp_feature_extractor(self, key, obs_space, net_arch.get(key, {}), activation_fn)
+                self._features_dim += _state_features_dim
             print(key, ":", self._features_dim)
             # print each feature extractor name and its output dim
 
