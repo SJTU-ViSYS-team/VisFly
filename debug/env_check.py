@@ -20,5 +20,5 @@ for i in range(FPS_num):
     img = env.render()
 
     cv2.imshow("render", cv2.cvtColor(img[0], cv2.COLOR_RGBA2BGRA))
-    cv2.waitKey(1)
+    cv2.waitKey(100)
 

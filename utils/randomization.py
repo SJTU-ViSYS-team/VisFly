@@ -116,6 +116,7 @@ class UniformStateRandomizer(StateRandomizer):
                  device: th.device = th.device("cpu"),
                  test: bool = False,
                  xyz_num: Optional[list] = None,
+                 xyz_half: Optional[list] = [0,2,0.],
                  ):
         super().__init__(
             position=position,
@@ -146,6 +147,8 @@ class UniformStateRandomizer(StateRandomizer):
                 indexing='ij')
             self.base = th.stack([x.flatten(), y.flatten(), z.flatten()], dim=1)
             self.current_generate_index = 0
+            
+            self.xyz_half = th.atleast_2d(th.tensor(xyz_half))
 
     def _generate(self, num, **kwargs) -> tuple:
         # position = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.position.half.unsqueeze(0) + self.position.mean.unsqueeze(0)
@@ -153,7 +156,8 @@ class UniformStateRandomizer(StateRandomizer):
         half = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.position.half.unsqueeze(0)
         position = mean + half
         if self.test:
-            position = self.base[self.current_generate_index % self.base.shape[0], :].unsqueeze(0) * self.position.half.unsqueeze(0) + self.position.mean.unsqueeze(0)
+            position = self.base[self.current_generate_index % self.base.shape[0], :].unsqueeze(0) * self.position.half.unsqueeze(0) + self.position.mean.unsqueeze(0) + \
+                       (2 * th.rand(num, *self.position.mean.shape) - 1) * self.xyz_half
             self.current_generate_index += 1
         if self.heading:
             direction = -half

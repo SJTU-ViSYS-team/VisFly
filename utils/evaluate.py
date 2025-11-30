@@ -103,7 +103,7 @@ class TestBase:
         obs = env.reset(is_test=True)
         self._img_names = [name for name in obs.keys() if (("color" in name) or ("depth" in name) or ("semantic" in name))]
         self.obs_all.append(obs)
-        self.state_all.append(env.state)
+        self.state_all.append(env.extend_state.clone().detach())
         self.info_all.append([{} for _ in range(env.num_envs)])
         self.t.append(env.t.clone())
         self.collision_all.append({"col_dis": env.collision_dis,
@@ -130,7 +130,7 @@ class TestBase:
 
             self.reward_all.append(reward)
             self.action_all.append(action)
-            self.state_all.append(state)
+            self.state_all.append(env.extend_state.clone().detach())
             self.obs_all.append(obs)
             self.info_all.append(copy.deepcopy(info))
             self.t.append(env.t.clone())
