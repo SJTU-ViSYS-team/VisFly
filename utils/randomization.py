@@ -5,10 +5,10 @@ from .maths import Quaternion
 from abc import abstractmethod
 
 rotation_matrices = th.tensor([
-    [[1, 0, 0], [0, 1, 0], [0, 0, 1]],  # 0°
-    [[0, -1, 0], [1, 0, 0], [0, 0, 1]],  # 90°
+    # [[1, 0, 0], [0, 1, 0], [0, 0, 1]],  # 0°
+    # [[0, -1, 0], [1, 0, 0], [0, 0, 1]],  # 90°
     [[-1, 0, 0], [0, -1, 0], [0, 0, 1]],  # 180°
-    [[0, 1, 0], [-1, 0, 0], [0, 0, 1]]  # 270°
+    # [[0, 1, 0], [-1, 0, 0], [0, 0, 1]]  # 270°
 ], dtype=th.float32)
 
 
@@ -181,7 +181,9 @@ class TargetUniformRandomizer(UniformStateRandomizer):
             position = ((2 * th.rand(num, *self.position.half.shape) - 1) * self.position.half.unsqueeze(0))
         else:
             position = th.tile(kwargs["velocity"].unsqueeze(0), (num, 1))
-            position = (rotation_matrices[self.current_generate_index % 4] @ position.T).T
+            position = position / position.norm(dim=1, keepdim=True) * \
+                        (th.rand(num, 1) * (self.max_dis - self.min_dis) + self.min_dis)
+            position = (rotation_matrices[self.current_generate_index % len(rotation_matrices)] @ position.T).T
             self.current_generate_index += 1
 
         position_norm = position.norm(dim=1, keepdim=True)
