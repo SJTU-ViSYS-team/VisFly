@@ -1,10 +1,10 @@
-name: VisFly
+name: visfly
 channels:
-  - pytorch
-  - aihabitat
-  - nvidia
-  - defaults
   - conda-forge
+  - defaults
+  - nvidia
+  - aihabitat
+  - pytorch
 dependencies:
   - _libgcc_mutex=0.1=conda_forge
   - _openmp_mutex=4.5=2_gnu
@@ -24,10 +24,10 @@ dependencies:
   - brotli-python=1.0.9=py39h6a678d5_7
   - bzip2=1.0.8=h5eee18b_5
   - c-ares=1.27.0=hd590300_0
-  - ca-certificates=2024.3.11=h06a4308_0
+  - ca-certificates=2025.11.12=hbd8a1cb_0
   - cachetools=4.2.2=pyhd3eb1b0_0
   - cairo=1.18.0=h3faef2a_0
-  - certifi=2024.2.2=py39h06a4308_0
+  - certifi=2025.8.3=pyhd8ed1ab_0
   - cffi=1.16.0=py39h5eee18b_0
   - charset-normalizer=2.0.4=pyhd3eb1b0_0
   - click=8.1.7=py39h06a4308_0
@@ -219,14 +219,14 @@ dependencies:
   - nss=3.98=h1d7d5a4_0
   - numba=0.59.0=py39h615d6bd_1
   - numexpr=2.8.7=py39h85018f9_0
-  - numpy-base=1.26.4=py39hb5e798b_0
   - oauthlib=3.2.2=py39h06a4308_0
   - ocl-icd=2.3.2=hd590300_0
+  - ocl-icd-system=1.0.0=1
   - opencv=4.9.0=py39h8db6a98_9
   - openexr=3.2.2=haf962dd_1
   - openh264=2.4.1=h59595ed_0
   - openjpeg=2.5.2=h488ebb8_0
-  - openssl=3.2.1=hd590300_1
+  - openssl=3.3.1=hb9d3cd8_3
   - p11-kit=0.24.1=hc5aa10d_0
   - packaging=24.0=pyhd8ed1ab_0
   - pandas=2.2.1=py39h6a678d5_0
@@ -331,6 +331,8 @@ dependencies:
   - zlib=1.2.13=hd590300_5
   - zstd=1.5.5=hc292b87_0
   - pip:
+      - habitat-sim==0.3.1
+      - magnum==0.0.0
       - numpy==1.23.5
       - setuptools==69.2.0
-
+prefix: /home/lee/miniconda3/envs/visfly

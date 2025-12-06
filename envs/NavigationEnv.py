@@ -107,9 +107,9 @@ class NavigationEnv2(DroneGymEnvsBase):
             visual: bool = True,
             requires_grad: bool = False,
             random_kwargs: dict = None,
-            dynamics_kwargs: dict = None,
-            scene_kwargs: dict = None,
-            sensor_kwargs: list = None,
+            dynamics_kwargs: dict = {},
+            scene_kwargs: dict = {},
+            sensor_kwargs: list = {},
             device: str = "cpu",
             tensor_output: bool = False,
             target: Optional[th.Tensor] = None,
@@ -235,7 +235,7 @@ class NavigationEnv2(DroneGymEnvsBase):
             "r_collision": r_collision.clone().detach(),
             "r_success": r_success.clone().detach()
         }
-        return reward, metrics
+        return reward
 
     def get_analytical_reward(self,
                               dyn,

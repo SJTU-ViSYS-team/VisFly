@@ -515,6 +515,7 @@ def set_cnn_feature_extractor(cls, name, observation_space, net_arch, activation
             bn=net_arch.get("bn", False),
             ln=net_arch.get("ln", False),
             bias=net_arch.get("bias", True),
+            max_pool=net_arch.get("max_pool", 0)
         )
     modules.append(image_extractor)
     cache_net = nn.Sequential(*modules)
@@ -622,6 +623,7 @@ class FlexibleExtractor(CustomBaseFeaturesExtractor):
 
     def _build(self, observation_space, net_arch, activation_fn):
         self._features_dim = 0
+        print("features dim:\n")
         for key, value in net_arch.items():
             if "semantic" in key or "color" in key or "depth" in key:
                 _image_features_dim = set_cnn_feature_extractor(self, key, observation_space[key], net_arch.get(key, {}), activation_fn)
@@ -629,7 +631,16 @@ class FlexibleExtractor(CustomBaseFeaturesExtractor):
             elif "state" in key:
                 _state_features_dim = set_mlp_feature_extractor(self, key, observation_space[key], net_arch.get(key, {}), activation_fn)
                 self._features_dim += _state_features_dim
-
+            elif "latent" in key:
+                obs_space = spaces.Box(
+                    low=-np.inf, high=np.inf, 
+                    shape=(observation_space["stoch"].shape[0]+observation_space["deter"].shape[0],), 
+                    dtype=np.float32
+                    )
+                _state_features_dim = set_mlp_feature_extractor(self, key, obs_space, net_arch.get(key, {}), activation_fn)
+                self._features_dim += _state_features_dim
+            print(key, ":", self._features_dim)
+            # print each feature extractor name and its output dim
 
 class StateTargetExtractor(CustomBaseFeaturesExtractor):
     def __init__(self,

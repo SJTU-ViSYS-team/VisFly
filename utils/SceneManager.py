@@ -119,6 +119,7 @@ class SceneManager(ABC):
             reset_settings=None,
             noise_settings=None,
             obj_settings=None,
+            shuffle=True,
     ):
 
         if reset_settings is None:
@@ -150,7 +151,7 @@ class SceneManager(ABC):
         #     ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=True
         # , num_workers=0)
         _dataLoader = SimpleDataLoader(
-            ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=True
+            ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=shuffle
         )
         self._scene_loader = _dataLoader
 
@@ -198,6 +199,7 @@ class SceneManager(ABC):
             self.render_settings["resolution"] = self.render_settings.get("resolution", [256, 256])
             self.render_settings["position"] = self.render_settings.get("position", None)
             self.render_settings["collision"] = self.render_settings.get("collision", False)
+            self.render_settings["approaching"] = self.render_settings.get("approaching", False)
 
             if self.render_settings["position"] is not None:
                 self.render_settings["position"] = th.as_tensor(self.render_settings["position"], dtype=th.float32)
@@ -208,32 +210,47 @@ class SceneManager(ABC):
 
         self.trajectory = [[[] for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
         self._collision_point = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
+        self._approaching_point = [None for _ in range(num_scene * num_agent_per_scene)]
         self._is_out_bounds = [[False for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
 
         # self.load_scenes()
+    def update_approaching_info(self, directions):
+        for i, direction in enumerate(directions):
+            scene_id, agent_id = i // self.num_agent_per_scene, i % self.num_agent_per_scene
+            hab_point = self.agents[scene_id][agent_id].scene_node.translation
+            hab_vector = mn.Vector3(std_to_habitat(direction, None)[0]).normalized()
+            ray = habitat_sim.geo.Ray(
+                origin=hab_point,
+                direction=hab_vector,
+            )
+            hit = self.scenes[scene_id].cast_ray(ray, max_distance=100.)
+            self._approaching_point[i] = hit.hits[0].point if len(hit.hits) > 0 else None
 
     def _get_datasets_info(self, path):
-        parts = path.split("/")
-        index = parts.index("datasets") + 1
         root_addr = os.path.dirname(__file__) + "/../"
-        self.datasets = parts[index]
+        parts = path.split("/")
+        if len(parts) >= 2:
+            index = parts.index("datasets") + 1
+            self.datasets = parts[index]
+        else:
+            self.datasets = parts[0]
         if self.render_settings and not self.render_settings.get("FOV", False):
             self._drone_path = [root_addr + "datasets/visfly-beta/configs/agents/DJI_Mavic_" + c + ".object_config.json" for c in ["red", "green", "blue", "orange"]]
         else:
             self._drone_path = [root_addr + "datasets/visfly-beta/configs/agents/DJI_Mavic_" + c + "_FOV.object_config.json" for c in ["red", "green", "blue", "orange"]]
-        if "hm3d" in parts[index].lower():
+        if "hm3d" in self.datasets.lower():
             self.datasets_name = "hm3d"
             self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
-        elif "visfly" in parts[index].lower():
+        elif "visfly" in self.datasets.lower():
             self.datasets_name = "visfly-beta"
             self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
-        elif "spy" in parts[index].lower():
+        elif "spy" in self.datasets.lower():
             self.datasets_name = "spy_datasets"
             self._datasets_path = root_addr + "datasets/spy_datasets/spy_datasets.scene_dataset_config.json"
-        elif "hssd" in parts[index].lower():
+        elif "hssd" in self.datasets.lower():
             self.datasets_name = "hssd-hab"
             self._datasets_path = root_addr + "datasets/hssd-hab/hssd-hab.scene_dataset_config.json"
-        elif "mp3d" in parts[index].lower():
+        elif "mp3d" in self.datasets.lower():
             self.datasets_name = "mp3d"
             self._datasets_path = root_addr + "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
         else:
@@ -387,7 +404,7 @@ class SceneManager(ABC):
             col_record = self.scenes[scene_id].get_closest_collision_point(
                 pt=self.agents[scene_id][agent_id].scene_node.translation,
                 max_search_radius=sensitive_radius,
-                is_object_collidable=False,
+                is_object_collidable=True,
             )
             self._collision_point[scene_id][agent_id], self._is_out_bounds[scene_id][agent_id] = col_record.hit_pos, col_record.is_out_bound
 
@@ -431,7 +448,7 @@ class SceneManager(ABC):
         if hab_positions is None:
             hab_positions, _ = std_to_habitat(std_positions, None)
         min_distance = np.empty(len(hab_positions), dtype=np.float32)
-        is_in_bounds = np.empty(len(hab_positions), dtype=bool)
+        is_out_bounds = np.empty(len(hab_positions), dtype=bool)
         for indice, hab_position in enumerate(hab_positions):
             col_record = \
                 self.scenes[scene_id].get_closest_collision_point(
@@ -440,8 +457,8 @@ class SceneManager(ABC):
                 )
 
             min_distance[indice] = np.linalg.norm((col_record.hit_pos - hab_position))
-            is_in_bounds[indice] = not col_record.is_out_bound
-        return (min_distance < uav_radius) & is_in_bounds
+            is_out_bounds[indice] = col_record.is_out_bound
+        return (min_distance < uav_radius) | is_out_bounds
 
     def get_collision_point(self, indices=None):
         if indices is None:
@@ -562,9 +579,25 @@ class SceneManager(ABC):
                         p2 = np.array(self.agents[scene_id][agent_id].scene_node.translation)
                         self._line_mgrs[scene_id].draw_transformed_line(
                             p2, p1,
-                            color=color_consequence(
-                                factor=np.linalg.norm(p2-p1)/2, color1=ColorSet6[2], color2=ColorSet6[0])
+                            color=ColorSet6[2]
+                            # color_consequence(
+                            #     factor=np.linalg.norm(p2-p1)/2, color1=ColorSet6[2], color2=ColorSet6[0])
                         )
+
+        if self.render_settings["approaching"]:
+            for i in range(self.num_scene * self.num_agent_per_scene):
+                scene_id = i // self.num_agent_per_scene
+                agent_id = i % self.num_agent_per_scene
+                if self._approaching_point[i] is not None:
+                    p1 = self._approaching_point[i]
+                    if p1 is None:
+                        continue
+                    p2 = np.array(self.agents[scene_id][agent_id].scene_node.translation)
+                    self._line_mgrs[scene_id].draw_transformed_line(
+                        p2, p1,
+                        color=color_consequence(
+                            factor=np.linalg.norm(p2 - p1) / 10, color1=ColorSet2[2], color2=ColorSet2[0])
+                    )
 
         # set the render camera pose
         if self.render_settings["mode"] == "follow":
@@ -787,6 +820,8 @@ class SceneManager(ABC):
                     self._drones[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(
                         self._drone_path[agent_id % len(self._drone_path)]
                     )
+                    if not self._drones[scene_id][agent_id]:
+                        raise AttributeError
 
             # if self.is_multi_drone:
                 # if self._drones[scene_id][0] is None:
@@ -828,7 +863,7 @@ class SceneManager(ABC):
         sim_cfg.scene_dataset_config_file = \
             self._datasets_path
         # "datasets/replica_cad_dataset/replicaCAD.scene_dataset_config.json"
-        sim_cfg.enable_physics = False
+        sim_cfg.enable_physics = True
         # sim_cfg.scene_id = "None" # debug
         sim_cfg.use_semantic_textures = False  # debug
         # sim_cfg.enable_physics = True # debug
@@ -968,6 +1003,10 @@ class SceneManager(ABC):
     @property
     def collision_point(self):
         return self._collision_point
+
+    @property
+    def approaching_point(self):
+        return self._approaching_point
 
     def _update_dynamics(self):
         self.dynamic_object_position = [obj_ctrl.position for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]

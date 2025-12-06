@@ -189,10 +189,17 @@ class SceneGenerator:
                     scene_json["default_lighting"] = "lighting/garage_v1_0"
                 # elif self.setting.stage == "box":
                 #     scene_json["default_lighting"] = "lighting/box_v1_0"
-                elif "box10" in self.setting.stage:
+                elif "box10" == self.setting.stage:
                     scene_json["default_lighting"] = "lighting/box10_0"
-                elif "box15" in self.setting.stage:
+                elif "box15" == self.setting.stage:
                     scene_json["default_lighting"] = "lighting/box15_0"
+                elif "box30" in self.setting.stage:
+                    scene_json["default_lighting"] = "lighting/box30_1"
+                    if  "high" in self.setting.stage:
+                        scene_json["default_lighting"] = "lighting/box30_1"
+                    else:
+                        scene_json["default_lighting"] = "lighting/box30_1"
+
                 else:
                     scene_json["default_lighting"] = "default"
 
@@ -227,11 +234,17 @@ class SceneGenerator:
             return [[0, -10, 0], [20, 10, 8.]]
         elif "box15_wall" in stage_name:
             return [[0, -15, 0], [30, 15, 8.]]
+        elif "box30_wall_high" in stage_name or "box30_high" in stage_name:
+            return [[0, -30, 0], [60, 30, 10.]]
+        elif "box30_wall" in stage_name or "box30" in stage_name:
+            return [[0, -30, 0], [60, 30, 4.]]
+
         scene_json = empty_scene.copy()
         scene_json["stage_instance"]["template_name"] = stage_name
         scene_save_path = f"{self.save_path}/temp.scene_instance.json"
         self._save_json_file(scene_save_path, scene_json)
         habitat_sim_cfg = habitat_sim.SimulatorConfiguration()
+        habitat_sim_cfg.scene_id = scene_save_path
         habitat_sim_cfg.scene_dataset_config_file = "datasets/visfly-beta/visfly-beta.scene_dataset_config.json"
         habitat_sim_cfg.enable_physics = False
         agent_cfg = habitat_sim.agent.AgentConfiguration()
@@ -264,6 +277,14 @@ class SceneGenerator:
             return "stages/box10_wall"
         elif self.setting.stage == "box15_wall":
             return "stages/box15_wall"
+        elif self.setting.stage == "box30_wall":
+            return "stages/box30_wall"
+        elif self.setting.stage == "box30":
+            return "stages/box30"
+        elif self.setting.stage == "box30_wall_high":
+            return "stages/box30_wall_high"
+        elif self.setting.stage == "box30_high":
+            return "stages/box30_high"
         elif self.setting.stage == "random":
             pass
         else:
@@ -485,11 +506,16 @@ if __name__ == "__main__":
     elif args.scene == "box10_wall":
         object_margin = np.array([[3,0,0],[3,0,8]])
     elif args.scene == "box15_wall":
-        object_margin = np.array([[2, 0, 0], [15, 0, 8]])
+        object_margin = np.array([[2, 0, 0], [2, 0, 8]])
+    elif args.scene == "box30_wall" or args.scene == "box30":
+        object_margin = np.array([[6, 0, 0], [4, 0, 4]])
+    elif args.scene == "box30_wall_high" or args.scene == "box30_high":
+        object_margin = np.array([[4, 4, 0], [4, 4, 10]])
+
     g = SceneGenerator(
         path="datasets/visfly-beta",
         num=args.quantity,
-        name=args.name if args.name is not None else args.scene,
+        name=args.name,
         setting=SceneGeneratorSetting(
             object_dense=args.density,
             object_scale=0,
@@ -498,12 +524,16 @@ if __name__ == "__main__":
             # object_margin=(0, 0, 0),
             light_random=False,
             stage=args.scene,
-            object_set="objects/pillar"
-        )
+            # object_set="objects/pillar"
+            # object_set="objects/tree"
+            object_set="objects/tree2"
+            # object_set="objects/simple_objects"
+    )
     )
     if args.generate:
         scene_save_paths = g.generate()
     if args.render:
+        print("Rendering scene:", g.name)
         os.system(f"python /home/lfx-desktop/files/habitat-sim/examples/viewer.py \
         --dataset datasets/visfly-beta/visfly-beta.scene_dataset_config.json \
         --scene {g.name}_0  --disable-physics")

@@ -304,8 +304,10 @@ class Integrator:
                          ori_vel: th.tensor,
                          tau: th.tensor,
                          J: th.tensor,
-                         J_inv: th.tensor):
-        d_pos = vel
+                         J_inv: th.tensor,
+                         wind: th.tensor
+                         ):
+        d_pos = vel + wind
         d_q = (ori * Quaternion(th.tensor(0), *ori_vel) * 0.5).toTensor()
         d_vel = acc
         # d_ori_vel = J_inv @ (tau - ori_vel.cross(J @ ori_vel))
@@ -323,6 +325,7 @@ class Integrator:
             J: th.tensor,
             J_inv: th.tensor,
             dt: th.tensor,
+            wind: th.tensor=th.zeros([3,1]),
             type="euler"
     ):
         if type == "euler":
@@ -335,7 +338,8 @@ class Integrator:
                 ori_vel=ori_vel_cache,
                 tau=tau,
                 J=J,
-                J_inv=J_inv
+                J_inv=J_inv,
+                wind=wind,
             )
             pos += d_pos * dt
             ori += d_ori * dt

@@ -21,7 +21,7 @@
       0.01,
       0.03
     ],
-    "max_rate": 1.0,
+    "max_rate": 2.0,
     "max_spd": 10.0,
     "max_pos": 10.0,
     "BODYRAYE_PID": {

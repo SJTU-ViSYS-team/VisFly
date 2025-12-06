@@ -12,6 +12,27 @@ rotation_matrices = th.tensor([
 ], dtype=th.float32)
 
 
+def calculate_yaw_pitch(vector):
+    """s
+    Calculate the yaw and pitch angles of a vector.
+
+    Args:
+        vector (np.ndarray): A 3D vector [x, y, z].
+
+    Returns:
+        tuple: (yaw, pitch) in radians.
+    """
+    x, y, z = vector[:, 0], vector[:, 1], vector[:, 2]
+
+    # Calculate yaw (arctan2 handles the quadrant correctly)
+    y_sign = th.where(y.sign() >= 0, 1, -1)
+    yaw = th.arccos(x / vector[:, :2].norm(dim=1)) * y_sign
+    # Calculate pitch
+    norm = th.linalg.norm(vector)  # Magnitude of the vector
+    pitch = th.arcsin(z / norm)
+    return yaw, pitch
+
+
 class StateRandomizer:
     def __init__(self,
                  position,
@@ -31,10 +52,9 @@ class StateRandomizer:
         self.is_collision_func = is_collision_func
         self.device = device
         self.scene_id = scene_id
-        # self.set_seed(seed)
 
     @abstractmethod
-    def _generate(self, num) -> tuple:
+    def _generate(self, num, *args, **kwargs) -> tuple:
         pass
 
     def generate(self, num, **kwargs):
@@ -52,11 +72,13 @@ class StateRandomizer:
         # velocity = (2 * th.rand(num, 3) - 1) * self.velocity.half + self.velocity.mean
         # angular_velocity = (2 * th.rand(num, 3) - 1) * self.angular_velocity.half + self.angular_velocity.mean
 
+        generate_step = 0
         if self.is_collision_func is not None:
-            is_collision = self.is_collision_func(std_positions=position, scene_id=self.scene_id)
+            is_collision = self.is_collision_func(std_positions=position, scene_id=self.scene_id, uav_radius=1.0)
             while True:
                 if not is_collision.any():
                     break
+                generate_step += 1
                 raw_pos, raw_ori, raw_vel, raw_ang_vel = self.generate(is_collision.sum(),  **kwargs)
                 position[is_collision, :] = raw_pos
                 orientation[is_collision, :] = raw_ori
@@ -67,6 +89,8 @@ class StateRandomizer:
                 # velocity[is_collision, :] = (2 * th.rand(is_collision.sum(), 3) - 1) * self.velocity.half + self.velocity.mean
                 # angular_velocity[is_collision, :] = (2 * th.rand(is_collision.sum(), 3) - 1) * self.angular_velocity.half + self.angular_velocity.mean
                 is_collision = self.is_collision_func(std_positions=position, scene_id=self.scene_id)
+                if generate_step > 100:
+                    print("Warning: Randomizer safe_generate too much times.")
 
         orientation = Quaternion.from_euler(*orientation.T).toTensor().T
         return position.to(self.device), orientation.to(self.device), velocity.to(self.device), angular_velocity.to(self.device)
@@ -85,10 +109,14 @@ class UniformStateRandomizer(StateRandomizer):
                  orientation={"mean": [0., 0., 0.], "half": [0., 0., 0.]},  # euler angle
                  velocity={"mean": [0., 0., 0.], "half": [0., 0., 0.]},
                  angular_velocity={"mean": [0., 0., 0.], "half": [0., 0., 0.]},
+                 heading=False,
                  seed: int = 42,
                  is_collision_func: Optional[callable] = None,
                  scene_id: Optional[int] = None,
-                 device: th.device = th.device("cpu")
+                 device: th.device = th.device("cpu"),
+                 test: bool = False,
+                 xyz_num: Optional[list] = None,
+                 xyz_half: Optional[list] = [0,2,0.],
                  ):
         super().__init__(
             position=position,
@@ -98,7 +126,7 @@ class UniformStateRandomizer(StateRandomizer):
             seed=seed,
             is_collision_func=is_collision_func,
             scene_id=scene_id,
-            device=device
+            device=device,
         )
 
         self.position = Uniform(**position)
@@ -106,9 +134,37 @@ class UniformStateRandomizer(StateRandomizer):
         self.velocity = Uniform(**velocity)
         self.angular_velocity = Uniform(**angular_velocity)
 
+        self.heading = heading
+
+        self.test = test
+
+        if test:
+            get_vector = lambda x: th.linspace(-1, 1, x)
+            x,y,z = th.meshgrid(
+                get_vector(xyz_num[0]),
+                get_vector(xyz_num[1]),
+                get_vector(xyz_num[2]),
+                indexing='ij')
+            self.base = th.stack([x.flatten(), y.flatten(), z.flatten()], dim=1)
+            self.current_generate_index = 0
+            
+            self.xyz_half = th.atleast_2d(th.tensor(xyz_half))
+
     def _generate(self, num, **kwargs) -> tuple:
-        position = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.position.half.unsqueeze(0) + self.position.mean.unsqueeze(0)
-        orientation = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.orientation.half.unsqueeze(0) + self.orientation.mean.unsqueeze(0)
+        # position = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.position.half.unsqueeze(0) + self.position.mean.unsqueeze(0)
+        mean = self.position.mean.unsqueeze(0)
+        half = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.position.half.unsqueeze(0)
+        position = mean + half
+        if self.test:
+            position = self.base[self.current_generate_index % self.base.shape[0], :].unsqueeze(0) * self.position.half.unsqueeze(0) + self.position.mean.unsqueeze(0) + \
+                       (2 * th.rand(num, *self.position.mean.shape) - 1) * self.xyz_half
+            self.current_generate_index += 1
+        if self.heading:
+            direction = -half
+            yaw, pitch = calculate_yaw_pitch(direction)
+            orientation = th.stack([th.zeros(num), pitch * 0, yaw], dim=1) + (2 * th.rand(num, 3) - 1) * self.orientation.half  # yaw, pitch, roll
+        else:
+            orientation = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.orientation.half.unsqueeze(0) + self.orientation.mean.unsqueeze(0)
         velocity = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.velocity.half.unsqueeze(0) + self.velocity.mean.unsqueeze(0)
         angular_velocity = (2 * th.rand(num, *self.position.mean.shape) - 1) * self.angular_velocity.half.unsqueeze(0) + self.angular_velocity.mean.unsqueeze(0)
         return position, orientation, velocity, angular_velocity
@@ -157,25 +213,7 @@ class TargetUniformRandomizer(UniformStateRandomizer):
         super().__init__(*args, **kwargs)
         
     def _generate(self, num, **kwargs) -> tuple:
-        def calculate_yaw_pitch(vector):
-            """s
-            Calculate the yaw and pitch angles of a vector.
 
-            Args:
-                vector (np.ndarray): A 3D vector [x, y, z].
-
-            Returns:
-                tuple: (yaw, pitch) in radians.
-            """
-            x, y, z = vector[:, 0], vector[:, 1], vector[:, 2]
-
-            # Calculate yaw (arctan2 handles the quadrant correctly)
-            y_sign = th.where(y.sign()>=0, 1, -1)
-            yaw = th.arccos(x / vector[:,:2].norm(dim=1)) * y_sign
-            # Calculate pitch
-            norm = th.linalg.norm(vector)  # Magnitude of the vector
-            pitch = th.arcsin(z / norm)
-            return yaw, pitch
         target_position = kwargs["position"]
         if not self.test:
             position = ((2 * th.rand(num, *self.position.half.shape) - 1) * self.position.half.unsqueeze(0))
@@ -208,7 +246,7 @@ class TargetUniformRandomizer(UniformStateRandomizer):
         return position, orientation, velocity, angular_velocity
 
 
-class UnionRandomizer:
+class UnionRandomizer(StateRandomizer):
     Randomizer_alias = {
         "Uniform": UniformStateRandomizer,
         "Normal": NormalStateRandomizer
@@ -217,18 +255,22 @@ class UnionRandomizer:
     def __init__(
             self,
             randomizers_kwargs: list,
-            device,
-            is_collision_func=None,
-            scene_id=0,
+            # device,
+            # is_collision_func=None,
+            # scene_id=0,
+            **kwargs
     ):
+        super().__init__(position=None, orientation=None, velocity=None, angular_velocity=None, **kwargs)
         self.randomizers = []
-        for randomizers in randomizers_kwargs:
+        for randomizer in randomizers_kwargs:
+            randomizer_cls = randomizer["class"]
+            randomizer_kwargs = randomizer["kwargs"] | kwargs
             self.randomizers.append(
-                self.Randomizer_alias[randomizers["class"]](
-                    device=device,
-                    is_collision_func=is_collision_func,
-                    scene_id=scene_id,
-                    **randomizers["kwargs"]
+                self.Randomizer_alias[randomizer_cls](
+                    # device=device,
+                    # is_collision_func=is_collision_func,
+                    # scene_id=scene_id,
+                    **randomizer_kwargs
                 )
             )
 
@@ -239,7 +281,7 @@ class UnionRandomizer:
         for randomizer in self.randomizers:
             randomizer.to(device)
 
-    def _generate(self, num) -> tuple:
+    def _generate(self, num, **kwargs) -> tuple:
         position, orientation, velocity, angular_velocity = [], [], [], []
         for randomizer in self.randomizers:
             pos, ori, vel, ang_vel = randomizer.generate(num)
@@ -251,21 +293,7 @@ class UnionRandomizer:
         position, orientation, velocity, angular_velocity = th.stack(position), th.stack(orientation), th.stack(velocity), th.stack(angular_velocity)
         select_randomizer_index = th.randint(0, len(self.randomizers), (num,))
         row = th.arange(num)
-        return position[row, select_randomizer_index], orientation[row, select_randomizer_index], velocity[row, select_randomizer_index], angular_velocity[row, select_randomizer_index]
-
-    def safe_generate(self, num) -> tuple:
-        position, orientation, velocity, angular_velocity = [], [], [], []
-        for randomizer in self.randomizers:
-            pos, ori, vel, ang_vel = randomizer.safe_generate(num)
-            position.append(pos)
-            orientation.append(ori)
-            velocity.append(vel)
-            angular_velocity.append(ang_vel)
-
-        position, orientation, velocity, angular_velocity = th.stack(position), th.stack(orientation), th.stack(velocity), th.stack(angular_velocity)
-        select_randomizer_index = th.randint(0, len(self.randomizers), (num,))
-        row = th.arange(num)
-        return position[select_randomizer_index, row, :], orientation[select_randomizer_index, row, :], velocity[select_randomizer_index, row, :], angular_velocity[select_randomizer_index, row, :]
+        return position[select_randomizer_index, row], orientation[select_randomizer_index, row], velocity[select_randomizer_index, row], angular_velocity[select_randomizer_index, row]
 
 
 def load_generator(cls, kwargs, is_collision_func=None, scene_id=None, device="cpu"):

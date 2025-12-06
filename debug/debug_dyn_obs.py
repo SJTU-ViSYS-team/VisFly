@@ -50,7 +50,6 @@ random_kwargs = {
 scene_path = "VisFly/datasets/visfly-beta/configs/scenes/box10_empty"
 scene_path = "VisFly/datasets/visfly-beta/configs/scenes/box10_wall"
 scene_path = "VisFly/datasets/visfly-beta/configs/scenes/box15_wall_pillar"
-# scene_path = "VisFly/datasets/visfly-beta/configs/scenes/garage_simple_l_long"
 sensor_kwargs = [{
     "sensor_type": SensorType.DEPTH,
     "uuid": "depth",
@@ -73,12 +72,8 @@ scene_kwargs = {
         "mode": "fix",
         "view": "custom",
         "resolution": [1080, 1920],
-        # "position": th.tensor([[-2., 0, 3.5], [2, 0, 2.5]]),
-        # "position": th.tensor([[7., 6.8, 5.5], [7, 4.8, 4.5]]),
         "position": th.tensor([[0., 0, 5.5], [7, 0, 2.5]]),
         "line_width": 6.,
-
-        # "point": th.tensor([[9., 0, 1], [1, 0, 1]]),
         "trajectory": True,
         "collision": True
 
