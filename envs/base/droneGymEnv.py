@@ -145,9 +145,11 @@ class DroneGymEnvsBase(VecEnv):
         # update state and observation and _done
         self.envs.step(self._action)
         if hasattr(self, "world"):
+            # standard env
             self.update_latent()
             assert world is None
         else:
+            # for train_env without self-built world model
             if world is not None:
                 self.stoch, self.deter = world.sequence_model(
                     action=self._action,
@@ -170,7 +172,7 @@ class DroneGymEnvsBase(VecEnv):
             feature = world.sequence_model.get_features(deter=self.deter, stoch=self.stoch)
             predicted_obs = world.decoder(feature)
         else:
-            predicted_obs = None
+            predicted_obs = {}
             
         if self._indiv_reward is None:
             self._reward = self.get_reward(predicted_obs=predicted_obs)
@@ -335,10 +337,10 @@ class DroneGymEnvsBase(VecEnv):
         assert ~(state is None and reset_obs is None) or (state is not None and reset_obs is not None)
         assert not isinstance(agent_indices, bool)
         if state is None:
-            if hasattr(self, "replay_buffer") and self.replay_buffer.pos :
+            if hasattr(self, "replay_buffer") and self.replay_buffer.pos:
                 num = len(agent_indices) if agent_indices is not None else self.num_agent
                 state = self.replay_buffer.sample(num, env_indices=agent_indices)[-1]
-        self.envs.reset_agents(agent_indices, state=state, pos_reset_by_state=False)
+        self.envs.reset_agents(agent_indices, state=state, pos_reset_by_state=True)
         self.get_full_observation(agent_indices)
         self._reset_attr(indices=agent_indices)
         return self._observations

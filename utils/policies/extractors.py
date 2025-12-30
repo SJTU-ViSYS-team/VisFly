@@ -249,6 +249,7 @@ def create_trans_cnn(
         kernel_size: List[int],
         channel: List[int],
         stride: List[int],
+        output_padding: List[int],
         padding: List[int],
         output_channel: Optional[int] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
@@ -263,7 +264,8 @@ def create_trans_cnn(
     kernel_size = [kernel_size] * len(channel) if isinstance(kernel_size, int) else kernel_size
     stride = [stride] * len(channel) if isinstance(stride, int) else stride
     padding = [padding] * len(channel) if isinstance(padding, int) else padding
-
+    output_padding = [output_padding] * len(channel) if isinstance(output_padding, int) else output_padding
+    
     assert len(kernel_size) == len(stride) == len(padding) == len(channel), \
         "The length of kernel_size, stride, padding and net_arch should be the same."
 
@@ -276,6 +278,7 @@ def create_trans_cnn(
             channel[idx],
             kernel_size=kernel_size[idx],
             stride=stride[idx],
+            output_padding=output_padding[idx],
             padding=padding[idx],
             bias=bias,
         )

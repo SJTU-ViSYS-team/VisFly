@@ -125,7 +125,7 @@ class DroneEnvsBase:
 
     def _create_bbox(self):
         if not self.visual:
-            bboxes = [th.tensor([[-30., -20., 0.], [30., 20., 8.]]).to(self.device)]
+            bboxes = [th.tensor([[-30., -30., 0.], [30., 30., 8.]]).to(self.device)]
         # else:
         #     bboxes = []
         #     if self.sceneManager.scenes[0] is None:
@@ -202,21 +202,21 @@ class DroneEnvsBase:
                     )
                     )
 
-        else:
-            # raise a warning
-            warnings.warn(f"Length of state generator kwargs {len(generator_kwargs)} does not match, sequentially use the generators by order.")
-            for i in range(self.sceneManager.num_scene):
-                generator = load_generator(
-                    cls=state_generator_class,
-                    device=self.device,
-                    is_collision_func=self.sceneManager.get_point_is_collision,
-                    scene_id=i,
-                    kwargs=generator_kwargs[i%len(generator_kwargs)],
-                )
-                for j in range(self.sceneManager.num_agent_per_scene):
-                    stateGenerators.append(generator)
+            else:
+                # raise a warning
+                warnings.warn(f"Length of state generator kwargs {len(generator_kwargs)} does not match, sequentially use the generators by order.")
+                for i in range(self.sceneManager.num_scene):
+                    generator = load_generator(
+                        cls=state_generator_class,
+                        device=self.device,
+                        is_collision_func=self.sceneManager.get_point_is_collision,
+                        scene_id=i,
+                        kwargs=generator_kwargs[i%len(generator_kwargs)],
+                    )
+                    for j in range(self.sceneManager.num_agent_per_scene):
+                        stateGenerators.append(generator)
 
-            assert len(stateGenerators) == self.sceneManager.num_agent
+                assert len(stateGenerators) == self.sceneManager.num_agent
 
         else:
             # not visual
