@@ -873,7 +873,7 @@ class SceneManager(ABC):
         sim_cfg.scene_dataset_config_file = \
             self._datasets_path
         # "datasets/replica_cad_dataset/replicaCAD.scene_dataset_config.json"
-        sim_cfg.enable_physics = True
+        sim_cfg.enable_physics = False
         # sim_cfg.scene_id = "None" # debug
         sim_cfg.use_semantic_textures = False  # debug
         # sim_cfg.enable_physics = True # debug

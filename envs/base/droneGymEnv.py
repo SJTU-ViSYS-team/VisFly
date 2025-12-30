@@ -118,7 +118,7 @@ class DroneGymEnvsBase(VecEnv):
 
         self._step_count = th.zeros((self.num_agent,), dtype=th.int32)
         self._reward = th.zeros((self.num_agent,))
-        self._rewards = th.zeros((self.num_agent,))
+        self._rewards = th.zeros((self.num_agent,),device=self.device)
         self._action = th.zeros((self.num_agent, 4))
         self._observations = TensorDict({})
 
@@ -138,15 +138,27 @@ class DroneGymEnvsBase(VecEnv):
 
         self._is_initial = False
 
-    def step(self, _action, is_test=False, latent_func=None):
+    def step(self, _action, is_test=False, predict=False, world=None):
         assert self._is_initial, "You should call reset() before step()"
         self._action = _action if isinstance(_action, th.Tensor) else th.as_tensor(_action)
         assert self._action.max() <= 1 and self._action.min() >= -1
         # update state and observation and _done
         self.envs.step(self._action)
+        if hasattr(self, "world"):
+            # standard env
+            self.update_latent()
+            assert world is None
+        else:
+            # for train_env without self-built world model
+            if world is not None:
+                self.stoch, self.deter = world.sequence_model(
+                    action=self._action,
+                    stoch=self.stoch,
+                    deter=self.deter,
+                    deterministic=False
+                )
+                
         self.get_full_observation()
-        if latent_func is not None:
-            self.update_latent(latent_func=latent_func)
 
         self._step_count += 1
 
@@ -156,10 +168,16 @@ class DroneGymEnvsBase(VecEnv):
         assert self._success.dtype == th.bool and self._failure.dtype == th.bool
 
         # update _rewards
-        if self._indiv_reward is None:
-            self._reward = self.get_reward()
+        if predict and world is not None:
+            feature = world.sequence_model.get_features(deter=self.deter, stoch=self.stoch)
+            predicted_obs = world.decoder(feature)
         else:
-            self._indiv_reward = self.get_reward()
+            predicted_obs = {}
+            
+        if self._indiv_reward is None:
+            self._reward = self.get_reward(predicted_obs=predicted_obs)
+        else:
+            self._indiv_reward = self.get_reward(predicted_obs=predicted_obs)
             assert isinstance(self._indiv_reward, dict) and "reward" in self._indiv_reward.keys()
             self._reward = self._indiv_reward["reward"]
             for key in self._indiv_reward.keys():
@@ -200,8 +218,8 @@ class DroneGymEnvsBase(VecEnv):
                 return self._observations, _reward.cpu().numpy(), _done.cpu().numpy().astype(np.int32), _info
 
     @th.no_grad()
-    def update_latent(self, latent_func):
-        next_stoch_post, next_deter = latent_func(
+    def update_latent(self):
+        next_stoch_post, next_deter = self.world.step(
                     action=self._action,
                     stoch=self.stoch,
                     deter=self.deter,
@@ -211,8 +229,8 @@ class DroneGymEnvsBase(VecEnv):
                 )
         self.deter = next_deter.to(self.device)
         self.stoch = next_stoch_post.to(self.device)
-        self._observations["deter"] = self.deter.detach().cpu()
-        self._observations["stoch"] = self.stoch.detach().cpu()
+        # self._observations["deter"] = self.deter.detach().cpu()
+        # self._observations["stoch"] = self.stoch.detach().cpu()
 
     def collect_info(self, indice, observations):
         _info = {}
@@ -274,14 +292,18 @@ class DroneGymEnvsBase(VecEnv):
         self._done = self._done.clone().detach()
         if hasattr(self, 'latent'):
             self.latent = self.latent.clone().detach()
-        if self.deter:
+        if self.deter is not None:
             self.deter = self.deter.clone().detach()
             self.stoch = self.stoch.clone().detach()
 
-    def reset(self, state=None, obs=None, is_test=False):
+    def reset(self, state=None, obs=None, is_test=False, stoch=None, deter=None):
+        if stoch is not None:
+            self.stoch = stoch
+            self.deter = deter
+            
         self._is_initial = True
 
-        self.envs.reset()
+        self.envs.reset(state=state)
 
         if isinstance(self.get_reward(), dict):
             self._indiv_reward: dict = self.get_reward()
@@ -296,7 +318,7 @@ class DroneGymEnvsBase(VecEnv):
             raise ValueError("get_reward should return a dict or a tensor, but got {}".format(type(self.get_reward())))
 
         self.get_full_observation()
-        self._reset_attr()
+        self._reset_attr(reset_latent=(stoch is None))
         self.get_full_observation()
 
         return self._observations
@@ -318,7 +340,7 @@ class DroneGymEnvsBase(VecEnv):
             if hasattr(self, "replay_buffer") and self.replay_buffer.pos:
                 num = len(agent_indices) if agent_indices is not None else self.num_agent
                 state = self.replay_buffer.sample(num, env_indices=agent_indices)[-1]
-        self.envs.reset_agents(agent_indices, state=state, pos_reset_by_state=False)
+        self.envs.reset_agents(agent_indices, state=state, pos_reset_by_state=True)
         self.get_full_observation(agent_indices)
         self._reset_attr(indices=agent_indices)
         return self._observations
@@ -330,14 +352,14 @@ class DroneGymEnvsBase(VecEnv):
             return obs
 
     @th.no_grad()
-    def _reset_attr(self, indices=None):
+    def _reset_attr(self, indices=None, reset_latent=True):
         if indices is None:
             self._reward = th.zeros((self.num_agent,), device=self.device)
             self._rewards = th.zeros((self.num_agent,), device=self.device)
             self._done = th.zeros(self.num_agent, dtype=bool, device=self.device)
             self._episode_done = th.zeros(self.num_agent, dtype=bool, device=self.device)
             self._step_count = th.zeros((self.num_agent,), dtype=th.int32, device=self.device)
-            if self.deter is not None:
+            if self.deter is not None and reset_latent:
                 if hasattr(self, "world"):
                     latent = self.world.sequence_model.initial(self.num_agent)
                     # next_deter, next_stoch_post = latent["deter"], latent["stoch"]
@@ -365,7 +387,7 @@ class DroneGymEnvsBase(VecEnv):
             self._done[indices] = False
             self._episode_done[indices] = False
             self._step_count[indices] = 0
-            if self.deter is not None:
+            if self.deter is not None and reset_latent:
                 if hasattr(self, "world"):
                     latent = self.world.sequence_model.initial(len(indices))
                     next_stoch, next_deter = self.world.sequence_model(

@@ -8,7 +8,7 @@ import numpy as np
 from VisFly.envs.NavigationEnv import NavigationEnv2
 
 from VisFly.utils.common import load_yaml_config
-from envs.ObjectTrackingEnv import ObjectTrackingEnv
+# from envs.ObjectTrackingEnv import ObjectTrackingEnv
 
 scene_num = 1
 agent_num = 200
