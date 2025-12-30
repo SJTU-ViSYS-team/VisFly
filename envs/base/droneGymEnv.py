@@ -245,8 +245,8 @@ class DroneGymEnvsBase(VecEnv):
         else:
             _info["TimeLimit.truncated"] = False
 
-        _info["episode"]["extra"] = {"collision":self.envs.once_collided.clone().detach().cpu().numpy()}
-
+        _info["episode"]["extra"] = {"collision":self.envs.once_collided[indice].clone().detach().cpu().numpy()}
+        # _info["episode"]["extra"] = {"collision":self.envs.once_collided.clone().detach().cpu().numpy()}
         if self._indiv_rewards is not None:
             for key in self._indiv_rewards.keys():
                 _info["episode"]["extra"][key] = self._indiv_rewards[key][indice].clone().detach()
@@ -315,7 +315,7 @@ class DroneGymEnvsBase(VecEnv):
         assert ~(state is None and reset_obs is None) or (state is not None and reset_obs is not None)
         assert not isinstance(agent_indices, bool)
         if state is None:
-            if hasattr(self, "replay_buffer") and self.replay_buffer.pos :
+            if hasattr(self, "replay_buffer") and self.replay_buffer.pos:
                 num = len(agent_indices) if agent_indices is not None else self.num_agent
                 state = self.replay_buffer.sample(num, env_indices=agent_indices)[-1]
         self.envs.reset_agents(agent_indices, state=state, pos_reset_by_state=False)

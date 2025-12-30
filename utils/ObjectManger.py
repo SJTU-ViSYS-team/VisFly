@@ -190,8 +190,11 @@ class ObjectManager:
 
     def _init_model(self, scene_id=None, collision_func=None):
         js_file = open(self._path)
-        objs_setting = json.load(js_file)["objects"]
-
+        source_objs_setting = json.load(js_file)["objects"]
+        objs_setting = []
+        for setting in source_objs_setting:
+            for i in range(setting.get("num", 1)):
+                objs_setting.append(setting)
         self._generators = []
         self._mean_velocity = []
         self._mean_angular_velocity = []

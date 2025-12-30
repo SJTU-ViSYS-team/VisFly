@@ -1,6 +1,7 @@
 import habitat_sim
 import os
 import sys
+from habitat_sim import SensorType
 
 from .ObjectManger import ObjectManager
 
@@ -20,6 +21,12 @@ from abc import ABC
 from .test.mesh_plot import plot_triangle_mesh, plot_rectangle_mesh
 
 DEBUG = False
+
+sensor_type_alias = {
+    "depth": SensorType.DEPTH,
+    "color": SensorType.COLOR,
+    "semantic": SensorType.SEMANTIC,
+}
 
 # parameters definition
 origin = mn.Vector3(0.0, 0.0, 0.0)
@@ -120,6 +127,7 @@ class SceneManager(ABC):
             noise_settings=None,
             obj_settings=None,
             shuffle=True,
+            is_object_collidable=False,
     ):
 
         if reset_settings is None:
@@ -155,6 +163,7 @@ class SceneManager(ABC):
         )
         self._scene_loader = _dataLoader
 
+        self.is_object_collidable = is_object_collidable
         if obj_settings:
             obj_path = self.obj_settings.get("path", "static")
             _objLoader = SimpleDataLoader(
@@ -182,7 +191,7 @@ class SceneManager(ABC):
 
         # Initialize _obj_mgrs to None by default
         self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
-        self._obj_ctrls: ObjectManager = [None for _ in range(num_scene)]
+        self._obj_ctrls: List[ObjectManager] = [None for _ in range(num_scene)]
 
         if multi_drone:
             self._drones = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
@@ -193,7 +202,7 @@ class SceneManager(ABC):
             self.render_settings["axes"] = self.render_settings.get("axes", False)
             self.render_settings["trajectory"] = self.render_settings.get("trajectory", False)
             self.render_settings["velocity"] = self.render_settings.get("velocity", False)
-            self.render_settings["sensor_type"] = self.render_settings.get("sensor_type", habitat_sim.SensorType.COLOR)
+            self.render_settings["sensor_type"] = self.render_settings.get("sensor_type", "color")
             self.render_settings["mode"] = self.render_settings.get("mode", "fix")
             self.render_settings["view"] = self.render_settings.get("view", "near")
             self.render_settings["resolution"] = self.render_settings.get("resolution", [256, 256])
@@ -380,7 +389,8 @@ class SceneManager(ABC):
     def _object_step(self):
         for i in range(self.num_scene):
             self._obj_ctrls[i].step()
-            self.scenes[i].update_dynamic_KDtree()
+            if self.is_object_collidable:
+                self.scenes[i].update_dynamic_KDtree()
         self._update_dynamics()
 
     def _update_collision_infos(self, indices: Optional[List] = None, sensitive_radius: float = None):
@@ -404,7 +414,7 @@ class SceneManager(ABC):
             col_record = self.scenes[scene_id].get_closest_collision_point(
                 pt=self.agents[scene_id][agent_id].scene_node.translation,
                 max_search_radius=sensitive_radius,
-                is_object_collidable=True,
+                is_object_collidable=self.is_object_collidable,
             )
             self._collision_point[scene_id][agent_id], self._is_out_bounds[scene_id][agent_id] = col_record.hit_pos, col_record.is_out_bound
 
@@ -771,7 +781,7 @@ class SceneManager(ABC):
         sensor_spec.uuid = "render"
         sensor_spec.resolution = self.render_settings["resolution"]
         sensor_spec.position = mn.Vector3([0, 0, 0])
-        sensor_spec.sensor_type = self.render_settings["sensor_type"]
+        sensor_spec.sensor_type = sensor_type_alias[self.render_settings["sensor_type"]]
         sensor_cfgs_list.append(sensor_spec)
 
         agent_cfg = habitat_sim.agent.AgentConfiguration(

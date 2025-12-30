@@ -508,7 +508,7 @@ if __name__ == "__main__":
     elif args.scene == "box15_wall":
         object_margin = np.array([[2, 0, 0], [2, 0, 8]])
     elif args.scene == "box30_wall" or args.scene == "box30":
-        object_margin = np.array([[6, 0, 0], [4, 0, 4]])
+        object_margin = np.array([[4, 0, 0], [4, 0, 4]])
     elif args.scene == "box30_wall_high" or args.scene == "box30_high":
         object_margin = np.array([[4, 4, 0], [4, 4, 10]])
 
