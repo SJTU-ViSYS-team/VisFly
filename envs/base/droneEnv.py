@@ -218,17 +218,6 @@ class DroneEnvsBase:
 
                 assert len(stateGenerators) == self.sceneManager.num_agent
 
-        else:
-            # not visual
-            generator = load_generator(
-                    cls=state_random_kwargs.get("class", "Uniform"),
-                    device=self.device,
-                    kwargs=generator_kwargs[0],
-                )
-            for agent_id in range(self.dynamics.num):
-                stateGenerators.append(generator)
-            # assert len(stateGenerators) == 1
-            
         for state_generator in stateGenerators:
             state_generator.to(self.device)
             # state_generator.set_seed(self.seed)

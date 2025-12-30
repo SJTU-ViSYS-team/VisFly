@@ -1,0 +1,78 @@
+{
+  "objects": [
+    {
+      "name": "object_target",
+      "model_path": "ball",
+      "initial": {
+        "class": "Uniform",
+        "kwargs": {
+          "position": {
+            "mean": [
+              15.0,
+              15,
+              2
+            ],
+            "half": [
+              15.0,
+              15,
+              1
+            ]
+          },
+          "orientation": {
+            "mean": [
+              0,
+              0,
+              0
+            ],
+            "half": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      },
+      "angular_velocity": 0,
+      "path": {
+        "class": "cubic",
+        "comment": "assert in cicular, polygon, rrt",
+        "kwargs": {
+          "type": "periodic",
+          "points": {
+            "class": "Uniform",
+            "kwargs": {
+              "position":{
+              "mean": [
+                [15,15,5.0],
+                [15,-15,5.0],
+                [45,-15,5.0],
+                [45,15,5.0]
+              ],
+              "half": [
+                [4,4,1.0],
+                [4,4,1.0],
+                [4,4,1.0],
+                [4,4,1.0]
+              ]
+            },
+            "velocity":{
+              "mean": [
+                [2.5,0,0.0],
+                [2.5,0,0.0],
+                [2.5,0,0.0],
+                [2.5,0,0.0]
+              ],
+              "half": [
+                [1.5,0,0.0],
+                [1.5,0,0.0],
+                [1.5,0,0.0],
+                [1.5,0,0.0]
+            ]
+            }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
