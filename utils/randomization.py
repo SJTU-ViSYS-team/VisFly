@@ -207,11 +207,11 @@ class TargetUniformRandomizer(UniformStateRandomizer):
     def __init__(self, min_dis=0.5, max_dis=10.0, test=False, *args, **kwargs):
         self.min_dis = min_dis
         self.max_dis = max_dis
+        super().__init__(*args, **kwargs)
         self.test = test
         if self.test:
             self.current_generate_index = 0
-        super().__init__(*args, **kwargs)
-        
+
     def _generate(self, num, **kwargs) -> tuple:
 
         target_position = kwargs["position"]
