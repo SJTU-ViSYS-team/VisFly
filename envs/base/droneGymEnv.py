@@ -217,7 +217,7 @@ class DroneGymEnvsBase(VecEnv):
             else:
                 return self._observations, _reward.cpu().numpy(), _done.cpu().numpy().astype(np.int32), _info
 
-    @th.no_grad()
+    # @th.no_grad()
     def update_latent(self):
         next_stoch_post, next_deter = self.world.step(
                     action=self._action,
@@ -229,6 +229,9 @@ class DroneGymEnvsBase(VecEnv):
                 )
         self.deter = next_deter.to(self.device)
         self.stoch = next_stoch_post.to(self.device)
+        if not self.requires_grad:
+            self.deter = self.deter.detach()
+            self.stoch = self.stoch.detach()
         # self._observations["deter"] = self.deter.detach().cpu()
         # self._observations["stoch"] = self.stoch.detach().cpu()
 
@@ -296,7 +299,7 @@ class DroneGymEnvsBase(VecEnv):
             self.deter = self.deter.clone().detach()
             self.stoch = self.stoch.clone().detach()
 
-    def reset(self, state=None, obs=None, is_test=False, stoch=None, deter=None):
+    def reset(self, state=None, predicted_obs=None, is_test=False, stoch=None, deter=None):
         if stoch is not None:
             self.stoch = stoch
             self.deter = deter
@@ -317,9 +320,9 @@ class DroneGymEnvsBase(VecEnv):
         else:
             raise ValueError("get_reward should return a dict or a tensor, but got {}".format(type(self.get_reward())))
 
-        self.get_full_observation()
+        self.get_full_observation(predicted_obs=predicted_obs)
         self._reset_attr(reset_latent=(stoch is None))
-        self.get_full_observation()
+        self.get_full_observation(predicted_obs=predicted_obs)
 
         return self._observations
 
@@ -454,8 +457,8 @@ class DroneGymEnvsBase(VecEnv):
         }
         return observations
 
-    def get_full_observation(self, indice=None):
-        obs = self.get_observation()
+    def get_full_observation(self, indice=None,predicted_obs=None):
+        obs = self.get_observation(predicted_obs=predicted_obs)
         assert isinstance(obs, TensorDict)
 
         if self.deter is not None:

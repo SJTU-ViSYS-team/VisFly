@@ -70,17 +70,18 @@ class DroneEnvsBase:
         if not visual:
             scene_kwargs["path"] = "datasets/visfly-beta/configs/scenes/box15_wall_empty"
             # scene_kwargs["path"] = "datasets/visfly-beta/configs/scenes/box15_center_wall_empty"
-        self.sceneManager: SceneManager = SceneManager(
-            num_agent_per_scene=num_agent_per_scene,
-            num_scene=num_scene,
-            seed=seed,
-            uav_radius=uav_radius,
-            multi_drone=multi_drone,
-            sensitive_radius=sensitive_radius,
-            sensor_settings=sensor_kwargs,
-            noise_settings=self.noise_settings,
-            **scene_kwargs
-        )
+        if self.visual:
+            self.sceneManager: SceneManager = SceneManager(
+                num_agent_per_scene=num_agent_per_scene,
+                num_scene=num_scene,
+                seed=seed,
+                uav_radius=uav_radius,
+                multi_drone=multi_drone,
+                sensitive_radius=sensitive_radius,
+                sensor_settings=sensor_kwargs,
+                noise_settings=self.noise_settings,
+                **scene_kwargs
+            )
 
         self.stateGenerators = self._create_randomizer(
             random_kwargs
@@ -217,7 +218,16 @@ class DroneEnvsBase:
                         stateGenerators.append(generator)
 
                 assert len(stateGenerators) == self.sceneManager.num_agent
-
+        else:
+            generator = load_generator(
+                cls=state_generator_class,
+                device=self.device,
+                is_collision_func=None,
+                scene_id=0,
+                kwargs=generator_kwargs[0],
+            )
+            for i in range(self.dynamics.num):
+                stateGenerators.append(generator)
         for state_generator in stateGenerators:
             state_generator.to(self.device)
             # state_generator.set_seed(self.seed)
@@ -247,7 +257,7 @@ class DroneEnvsBase:
         self.reset_agents(indices=None, state=state)
         return self.state, self.sensor_obs
 
-    def reset_agents(self, indices: Optional[List] = None, state=None, pos_reset_by_state=False) -> Tuple[Tensor, Optional[np.ndarray]]:
+    def reset_agents(self, indices: Optional[List] = None, state=None, pos_reset_by_state=True) -> Tuple[Tensor, Optional[np.ndarray]]:
         indices = indices if (indices is None or hasattr(indices, "__iter__")) else th.as_tensor([indices], device=self.device)
         motor_speed, thrust, t = None, None, None
         if state is not None:
@@ -363,7 +373,7 @@ class DroneEnvsBase:
         self.dynamics.step(action)
         if self.visual:
             self.sceneManager.set_pose(self.dynamics.position, self.dynamics._orientation.toTensor().T)
-        self.sceneManager.step()
+            self.sceneManager.step()
         self.update_observation()
         self.update_collision()
 

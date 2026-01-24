@@ -288,16 +288,16 @@ class Dynamics:
         action = action.clone()
         
         if self.action_type == ACTION_TYPE.BODYRATE:
-            # action format: [thrust/m, bodyrate_x, bodyrate_y, bodyrate_z]
+            # action format: [acc, bodyrate_x, bodyrate_y, bodyrate_z]
             normalized = th.hstack([
-                (action[:, :1] / self.m - self._normal_params["thrust"].mean) / self._normal_params["thrust"].half,
+                (action[:, :1] - self._normal_params["acc"].mean) / self._normal_params["acc"].half,
                 (action[:, 1:] - self._normal_params["bodyrate"].mean) / self._normal_params["bodyrate"].half
             ])
             return normalized
             
         elif self.action_type == ACTION_TYPE.THRUST:
-            # action format: [thrust]
-            normalized = (action / self.m - self._normal_params["thrust"].mean) / self._normal_params["thrust"].half
+            # action format: [acc]
+            normalized = (action - self._normal_params["acc"].mean) / self._normal_params["acc"].half
             return normalized
             
         elif self.action_type == ACTION_TYPE.VELOCITY:
@@ -593,6 +593,9 @@ class Dynamics:
         self._bd_rate = bound(
             max=th.tensor(data["max_rate"]), min=th.tensor(-data["max_rate"])
         )
+        self._bd_acc = bound(
+            max=th.tensor(data["max_acc"] * -g[2]), min=th.tensor(0)
+        )
         self._bd_yaw_rate = bound(
             max=th.tensor(data["max_rate"]), min=th.tensor(-data["max_rate"])
         )
@@ -609,23 +612,22 @@ class Dynamics:
         Args:
             normal_range (Tuple[float, float], optional): _description_. Defaults to (-1, 1).
         """
-        thrust_normalize_method = "medium"  # "max_min"
+        thrust_normalize_method = "max_min"
 
         if self.action_type == ACTION_TYPE.BODYRATE:
             max_bias = 1
             if thrust_normalize_method == "medium":
                 # (_, average_)
-                thrust_scale = (self.m * -g[2]) / self.m
+                acc_scale = -g[2]
                 # thrust_scale = (self.m * -g[2]) * 1 / self.m
-                thrust_bias = (self.m * -g[2]) * max_bias / self.m
+                acc_bias =  -g[2] * max_bias
             elif thrust_normalize_method == "max_min":
                 # (min_act, max_act)->(min_thrust, max_thrust) this method try to reach the limit of drone, which is negative for sim2real
-                thrust_scale = (
-                        (self._bd_thrust.max - self._bd_thrust.min)
-                        / self.m
+                acc_scale = (
+                        (self._bd_acc.max - self._bd_acc.min)
                         / (normal_range[1] - normal_range[0])
                 )
-                thrust_bias = self._bd_thrust.max / self.m - thrust_scale * normal_range[1]
+                acc_bias = self._bd_acc.max - acc_scale * normal_range[1]
             else:
                 raise ValueError("thrust_normalize_method should be one of ['medium', 'max_min']")
 
@@ -634,7 +636,7 @@ class Dynamics:
             )
             bodyrate_bias = self._bd_rate.max - bodyrate_scale * normal_range[1]
             self._normal_params = {
-                "thrust": Uniform(mean=thrust_bias, half=thrust_scale).to(self.device),
+                "acc": Uniform(mean=acc_bias, half=acc_scale).to(self.device),
                 "bodyrate": Uniform(mean=bodyrate_bias, half=bodyrate_scale).to(self.device),
             }
 
@@ -645,15 +647,14 @@ class Dynamics:
                 bias = (self.m * -g[2]) / 4 / self.m
             elif thrust_normalize_method == "max_min":
                 scale = (
-                        (self._bd_thrust.max - self._bd_thrust.min)
-                        / self.m
+                        (self._bd_acc.max - self._bd_acc.min)
                         / (normal_range[1] - normal_range[0])
                 )
-                bias = self._bd_thrust.max / self.m - scale * normal_range[1]
+                bias = self._bd_acc.max - scale * normal_range[1]
             else:
                 raise ValueError("thrust_normalize_method should be one of ['medium', 'max_min']")
 
-            self._normal_params = {"thrust": Uniform(mean=bias, half=scale).to(self.device)}
+            self._normal_params = {"acc": Uniform(mean=bias, half=scale).to(self.device)}
 
         elif self.action_type == ACTION_TYPE.VELOCITY:
             spd_scale = (self._bd_spd.max - self._bd_spd.min) / (
@@ -701,14 +702,14 @@ class Dynamics:
 
         if self.action_type == ACTION_TYPE.BODYRATE:
             command = th.hstack([
-                (command[:, :1] * self._normal_params["thrust"].half + self._normal_params["thrust"].mean) * self.m,
+                (command[:, :1] * self._normal_params["acc"].half + self._normal_params["acc"].mean) * self.m,
                 command[:, 1:] * self._normal_params["bodyrate"].half + self._normal_params["bodyrate"].mean
             ]
             )
             return command.T
 
         elif self.action_type == ACTION_TYPE.THRUST:
-            command = self.m * (command * self._normal_params["thrust"].half + self._normal_params["thrust"].mean).T
+            command = self.m * (command * self._normal_params["acc"].half + self._normal_params["acc"].mean).T
             return command
 
         elif self.action_type == ACTION_TYPE.VELOCITY:
