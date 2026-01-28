@@ -218,7 +218,16 @@ class DroneEnvsBase:
                         stateGenerators.append(generator)
 
                 assert len(stateGenerators) == self.sceneManager.num_agent
-
+        else:
+            generator = load_generator(
+                cls=state_generator_class,
+                device=self.device,
+                is_collision_func=None,
+                scene_id=0,
+                kwargs=generator_kwargs[0],
+            )
+            for i in range(self.dynamics.num):
+                stateGenerators.append(generator)
         for state_generator in stateGenerators:
             state_generator.to(self.device)
             # state_generator.set_seed(self.seed)
@@ -365,7 +374,7 @@ class DroneEnvsBase:
         self.dynamics.step(action)
         if self.visual:
             self.sceneManager.set_pose(self.dynamics.position, self.dynamics._orientation.toTensor().T, self.dynamics.velocity)
-        self.sceneManager.step()
+            self.sceneManager.step()
         self.update_observation()
         self.update_collision()
 

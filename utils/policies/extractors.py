@@ -292,7 +292,14 @@ def create_trans_cnn(
         # modules.append(nn.MaxPool2d(kernel_size=2, stride=2))
 
     if output_channel is not None:
-        modules.append(nn.ConvTranspose2d(prev_channel, output_channel, kernel_size=kernel_size[-1], stride=stride[-1], padding=padding[-1]))
+        modules.append(nn.ConvTranspose2d(
+            prev_channel,
+            output_channel,
+            kernel_size=kernel_size[-1],
+            stride=stride[-1], 
+            padding=padding[-1],
+            bias=bias,
+            ))
 
     if squash_output:
         modules.append(nn.Tanh())
@@ -348,7 +355,14 @@ def create_cnn(
             modules.append(nn.MaxPool2d(kernel_size=max_pool, stride=2))
 
     if output_channel is not None:
-        modules.append(nn.Conv2d(prev_channel, output_channel, kernel_size=kernel_size[-1], stride=stride[-1], padding=padding[-1]))
+        modules.append(nn.Conv2d(
+            prev_channel,
+            output_channel,
+            kernel_size=kernel_size[-1],
+            stride=stride[-1], 
+            padding=padding[-1],
+            bias=bias
+            ))
 
     modules.append(SafeFlatten())
 
@@ -417,7 +431,7 @@ def create_mlp(
 
     if output_dim is not None:
         last_layer_dim = layer[-1] if len(layer) > 0 else input_dim
-        modules.append(nn.Linear(last_layer_dim, output_dim))
+        modules.append(nn.Linear(last_layer_dim, output_dim, bias=bias))
 
     if squash_output:
         if len(modules) > 0 and not isinstance(modules[-1], nn.Linear):
