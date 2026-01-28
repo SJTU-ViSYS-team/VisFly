@@ -234,7 +234,7 @@ class SceneGenerator:
             return [[0, -10, 0], [20, 10, 8.]]
         elif "box15_wall" in stage_name:
             return [[0, -15, 0], [30, 15, 8.]]
-        elif "box30_wall_high" in stage_name or "box30_high" in stage_name:
+        elif "box30_wall_high" in stage_name or "box30_high" in stage_name or "plane30_high" in stage_name:
             return [[0, -30, 0], [60, 30, 10.]]
         elif "box30_wall" in stage_name or "box30" in stage_name:
             return [[0, -30, 0], [60, 30, 4.]]
@@ -269,26 +269,7 @@ class SceneGenerator:
         Returns:
             _type_: _description_
         """
-        if self.setting.stage == "random":
-            pass
-        elif self.setting.stage == "garage":
-            return "stages/garage_v1"
-        elif self.setting.stage == "box10_wall":
-            return "stages/box10_wall"
-        elif self.setting.stage == "box15_wall":
-            return "stages/box15_wall"
-        elif self.setting.stage == "box30_wall":
-            return "stages/box30_wall"
-        elif self.setting.stage == "box30":
-            return "stages/box30"
-        elif self.setting.stage == "box30_wall_high":
-            return "stages/box30_wall_high"
-        elif self.setting.stage == "box30_high":
-            return "stages/box30_high"
-        elif self.setting.stage == "random":
-            pass
-        else:
-            raise ValueError("stage setting error")
+        return "stages/" + self.setting.stage
 
     def _create_objects(self,
                         density: float,
@@ -507,9 +488,9 @@ if __name__ == "__main__":
         object_margin = np.array([[3,0,0],[3,0,8]])
     elif args.scene == "box15_wall":
         object_margin = np.array([[2, 0, 0], [2, 0, 8]])
-    elif args.scene == "box30_wall" or args.scene == "box30":
-        object_margin = np.array([[4, 0, 0], [4, 0, 4]])
-    elif args.scene == "box30_wall_high" or args.scene == "box30_high":
+    elif args.scene == "box30_wall" or args.scene == "box30"or args.scene == "plane30":
+        object_margin = np.array([[4, 0, 1], [4, 0, 1]])
+    elif args.scene == "box30_wall_high" or args.scene == "box30_high"or args.scene == "plane30_high":
         object_margin = np.array([[4, 4, 0], [4, 4, 10]])
 
     g = SceneGenerator(

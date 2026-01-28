@@ -21,7 +21,7 @@
       0.01,
       0.03
     ],
-    "max_rate": 1.0,
+    "max_rate": 3.0,
     "max_spd": 10.0,
     "max_pos": 10.0,
     "BODYRAYE_PID": {
@@ -76,6 +76,11 @@
         0.0001
       ]
     ]
+    },
+    "THRUST_PID": {
+        "p": 1.0,
+        "i": 0.0,
+        "d": 0.0
     },
     "VELOCITY_PID": {
       "p": 3.0,

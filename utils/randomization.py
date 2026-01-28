@@ -115,7 +115,7 @@ class UniformStateRandomizer(StateRandomizer):
                  scene_id: Optional[int] = None,
                  device: th.device = th.device("cpu"),
                  test: bool = False,
-                 xyz_num: Optional[list] = None,
+                 xyz_num: Optional[list] = [1,1,1],
                  xyz_half: Optional[list] = [0,2,0.],
                  ):
         super().__init__(

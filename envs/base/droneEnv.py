@@ -79,6 +79,7 @@ class DroneEnvsBase:
             sensitive_radius=sensitive_radius,
             sensor_settings=sensor_kwargs,
             noise_settings=self.noise_settings,
+            dt=self.dynamics.ctrl_dt,
             **scene_kwargs
         )
 
@@ -271,7 +272,7 @@ class DroneEnvsBase:
 
         self.dynamics.reset(pos=pos, ori=ori, vel=vel, ori_vel=ori_vel, motor_omega=motor_speed, thrusts=thrust, t=t, indices=indices)
         if self.visual:
-            self.sceneManager.reset_agents(std_positions=pos, std_orientations=ori, indices=indices)
+            self.sceneManager.reset_agents(std_positions=pos, std_orientations=ori, indices=indices, std_velocities=vel)
         self.update_observation(indices=indices)
         self.update_collision(indices)
 
@@ -351,7 +352,8 @@ class DroneEnvsBase:
             self._is_out_bounds = (self.dynamics.position < self._bboxes[0][0]).any(dim=1) |\
                                   (self.dynamics.position > self._bboxes[0][1]).any(dim=1)
 
-        self._collision_vector = (self._collision_point - self.position)
+        _collision_point = self._collision_point if self.sceneManager.col_refine_steps == 0 else self._collision_point[:,0,:]
+        self._collision_vector = (_collision_point - self.position)
         self._collision_dis = (self._collision_vector - 0).norm(dim=1)
         self._is_collision = (self._collision_dis < self.uav_radius) # | self._is_out_bounds
 
@@ -362,7 +364,7 @@ class DroneEnvsBase:
     def step(self, action):
         self.dynamics.step(action)
         if self.visual:
-            self.sceneManager.set_pose(self.dynamics.position, self.dynamics._orientation.toTensor().T)
+            self.sceneManager.set_pose(self.dynamics.position, self.dynamics._orientation.toTensor().T, self.dynamics.velocity)
         self.sceneManager.step()
         self.update_observation()
         self.update_collision()
