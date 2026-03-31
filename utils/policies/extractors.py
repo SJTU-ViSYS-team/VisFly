@@ -249,6 +249,7 @@ def create_trans_cnn(
         kernel_size: List[int],
         channel: List[int],
         stride: List[int],
+        output_padding: List[int],
         padding: List[int],
         output_channel: Optional[int] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
@@ -263,7 +264,8 @@ def create_trans_cnn(
     kernel_size = [kernel_size] * len(channel) if isinstance(kernel_size, int) else kernel_size
     stride = [stride] * len(channel) if isinstance(stride, int) else stride
     padding = [padding] * len(channel) if isinstance(padding, int) else padding
-
+    output_padding = [output_padding] * len(channel) if isinstance(output_padding, int) else output_padding
+    
     assert len(kernel_size) == len(stride) == len(padding) == len(channel), \
         "The length of kernel_size, stride, padding and net_arch should be the same."
 
@@ -276,6 +278,7 @@ def create_trans_cnn(
             channel[idx],
             kernel_size=kernel_size[idx],
             stride=stride[idx],
+            output_padding=output_padding[idx],
             padding=padding[idx],
             bias=bias,
         )
@@ -289,7 +292,14 @@ def create_trans_cnn(
         # modules.append(nn.MaxPool2d(kernel_size=2, stride=2))
 
     if output_channel is not None:
-        modules.append(nn.ConvTranspose2d(prev_channel, output_channel, kernel_size=kernel_size[-1], stride=stride[-1], padding=padding[-1]))
+        modules.append(nn.ConvTranspose2d(
+            prev_channel,
+            output_channel,
+            kernel_size=kernel_size[-1],
+            stride=stride[-1], 
+            padding=padding[-1],
+            bias=bias,
+            ))
 
     if squash_output:
         modules.append(nn.Tanh())
@@ -345,7 +355,14 @@ def create_cnn(
             modules.append(nn.MaxPool2d(kernel_size=max_pool, stride=2))
 
     if output_channel is not None:
-        modules.append(nn.Conv2d(prev_channel, output_channel, kernel_size=kernel_size[-1], stride=stride[-1], padding=padding[-1]))
+        modules.append(nn.Conv2d(
+            prev_channel,
+            output_channel,
+            kernel_size=kernel_size[-1],
+            stride=stride[-1], 
+            padding=padding[-1],
+            bias=bias
+            ))
 
     modules.append(SafeFlatten())
 
@@ -414,7 +431,7 @@ def create_mlp(
 
     if output_dim is not None:
         last_layer_dim = layer[-1] if len(layer) > 0 else input_dim
-        modules.append(nn.Linear(last_layer_dim, output_dim))
+        modules.append(nn.Linear(last_layer_dim, output_dim, bias=bias))
 
     if squash_output:
         if len(modules) > 0 and not isinstance(modules[-1], nn.Linear):

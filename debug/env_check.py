@@ -5,7 +5,7 @@ import cv2
 """
     import test env
 """
-from exps.std.run import main
+from exps.frozen.stage1.run import main
 
 
 env = main(debug_env=True)

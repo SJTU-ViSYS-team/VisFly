@@ -145,9 +145,11 @@ class DroneGymEnvsBase(VecEnv):
         # update state and observation and _done
         self.envs.step(self._action)
         if hasattr(self, "world"):
+            # standard env
             self.update_latent()
             assert world is None
         else:
+            # for train_env without self-built world model
             if world is not None:
                 self.stoch, self.deter = world.sequence_model(
                     action=self._action,
@@ -170,7 +172,7 @@ class DroneGymEnvsBase(VecEnv):
             feature = world.sequence_model.get_features(deter=self.deter, stoch=self.stoch)
             predicted_obs = world.decoder(feature)
         else:
-            predicted_obs = None
+            predicted_obs = {}
             
         if self._indiv_reward is None:
             self._reward = self.get_reward(predicted_obs=predicted_obs)
@@ -215,7 +217,7 @@ class DroneGymEnvsBase(VecEnv):
             else:
                 return self._observations, _reward.cpu().numpy(), _done.cpu().numpy().astype(np.int32), _info
 
-    @th.no_grad()
+    # @th.no_grad()
     def update_latent(self):
         next_stoch_post, next_deter = self.world.step(
                     action=self._action,
@@ -227,6 +229,9 @@ class DroneGymEnvsBase(VecEnv):
                 )
         self.deter = next_deter.to(self.device)
         self.stoch = next_stoch_post.to(self.device)
+        if not self.requires_grad:
+            self.deter = self.deter.detach()
+            self.stoch = self.stoch.detach()
         # self._observations["deter"] = self.deter.detach().cpu()
         # self._observations["stoch"] = self.stoch.detach().cpu()
 
@@ -261,8 +266,8 @@ class DroneGymEnvsBase(VecEnv):
         else:
             _info["TimeLimit.truncated"] = False
 
-        _info["episode"]["extra"] = {"collision":self.envs.once_collided.clone().detach().cpu().numpy()}
-
+        _info["episode"]["extra"] = {"collision":self.envs.once_collided[indice].clone().detach().cpu().numpy()}
+        # _info["episode"]["extra"] = {"collision":self.envs.once_collided.clone().detach().cpu().numpy()}
         if self._indiv_rewards is not None:
             for key in self._indiv_rewards.keys():
                 _info["episode"]["extra"][key] = self._indiv_rewards[key][indice].clone().detach()
@@ -294,7 +299,7 @@ class DroneGymEnvsBase(VecEnv):
             self.deter = self.deter.clone().detach()
             self.stoch = self.stoch.clone().detach()
 
-    def reset(self, state=None, obs=None, is_test=False, stoch=None, deter=None):
+    def reset(self, state=None, predicted_obs=None, is_test=False, stoch=None, deter=None):
         if stoch is not None:
             self.stoch = stoch
             self.deter = deter
@@ -315,9 +320,9 @@ class DroneGymEnvsBase(VecEnv):
         else:
             raise ValueError("get_reward should return a dict or a tensor, but got {}".format(type(self.get_reward())))
 
-        self.get_full_observation()
+        self.get_full_observation(predicted_obs=predicted_obs)
         self._reset_attr(reset_latent=(stoch is None))
-        self.get_full_observation()
+        self.get_full_observation(predicted_obs=predicted_obs)
 
         return self._observations
 
@@ -335,10 +340,10 @@ class DroneGymEnvsBase(VecEnv):
         assert ~(state is None and reset_obs is None) or (state is not None and reset_obs is not None)
         assert not isinstance(agent_indices, bool)
         if state is None:
-            if hasattr(self, "replay_buffer") and self.replay_buffer.pos :
+            if hasattr(self, "replay_buffer") and self.replay_buffer.pos:
                 num = len(agent_indices) if agent_indices is not None else self.num_agent
                 state = self.replay_buffer.sample(num, env_indices=agent_indices)[-1]
-        self.envs.reset_agents(agent_indices, state=state, pos_reset_by_state=False)
+        self.envs.reset_agents(agent_indices, state=state, pos_reset_by_state=True)
         self.get_full_observation(agent_indices)
         self._reset_attr(indices=agent_indices)
         return self._observations
@@ -452,8 +457,8 @@ class DroneGymEnvsBase(VecEnv):
         }
         return observations
 
-    def get_full_observation(self, indice=None):
-        obs = self.get_observation()
+    def get_full_observation(self, indice=None,predicted_obs=None):
+        obs = self.get_observation(predicted_obs=predicted_obs)
         assert isinstance(obs, TensorDict)
 
         if self.deter is not None:

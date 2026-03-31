@@ -115,7 +115,7 @@ class UniformStateRandomizer(StateRandomizer):
                  scene_id: Optional[int] = None,
                  device: th.device = th.device("cpu"),
                  test: bool = False,
-                 xyz_num: Optional[list] = None,
+                 xyz_num: Optional[list] = [1,1,1],
                  xyz_half: Optional[list] = [0,2,0.],
                  ):
         super().__init__(
@@ -207,11 +207,11 @@ class TargetUniformRandomizer(UniformStateRandomizer):
     def __init__(self, min_dis=0.5, max_dis=10.0, test=False, *args, **kwargs):
         self.min_dis = min_dis
         self.max_dis = max_dis
+        super().__init__(*args, **kwargs)
         self.test = test
         if self.test:
             self.current_generate_index = 0
-        super().__init__(*args, **kwargs)
-        
+
     def _generate(self, num, **kwargs) -> tuple:
 
         target_position = kwargs["position"]

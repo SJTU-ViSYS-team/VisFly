@@ -1,6 +1,7 @@
 import habitat_sim
 import os
 import sys
+from habitat_sim import SensorType
 
 from .ObjectManger import ObjectManager
 
@@ -20,6 +21,12 @@ from abc import ABC
 from .test.mesh_plot import plot_triangle_mesh, plot_rectangle_mesh
 
 DEBUG = False
+
+sensor_type_alias = {
+    "depth": SensorType.DEPTH,
+    "color": SensorType.COLOR,
+    "semantic": SensorType.SEMANTIC,
+}
 
 # parameters definition
 origin = mn.Vector3(0.0, 0.0, 0.0)
@@ -120,6 +127,9 @@ class SceneManager(ABC):
             noise_settings=None,
             obj_settings=None,
             shuffle=True,
+            is_object_collidable=False,
+            col_refine_steps=0,
+            dt=0.03,
     ):
 
         if reset_settings is None:
@@ -147,6 +157,9 @@ class SceneManager(ABC):
         self.drone_radius = uav_radius
         self.sensitive_radius = sensitive_radius
 
+        self.col_refine_steps = col_refine_steps
+        self.col_refine_dt = dt
+
         # self._dataLoader = DataLoader(
         #     ChildrenPathDataset(self.root_path, type=scene_type, semantic=semantic), batch_size=num_scene, shuffle=True
         # , num_workers=0)
@@ -155,6 +168,7 @@ class SceneManager(ABC):
         )
         self._scene_loader = _dataLoader
 
+        self.is_object_collidable = is_object_collidable
         if obj_settings:
             obj_path = self.obj_settings.get("path", "static")
             _objLoader = SimpleDataLoader(
@@ -182,7 +196,7 @@ class SceneManager(ABC):
 
         # Initialize _obj_mgrs to None by default
         self._obj_mgrs: habitat_sim.physics.RigidObjectManager = [None for _ in range(num_scene)]
-        self._obj_ctrls: ObjectManager = [None for _ in range(num_scene)]
+        self._obj_ctrls: List[ObjectManager] = [None for _ in range(num_scene)]
 
         if multi_drone:
             self._drones = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
@@ -193,7 +207,7 @@ class SceneManager(ABC):
             self.render_settings["axes"] = self.render_settings.get("axes", False)
             self.render_settings["trajectory"] = self.render_settings.get("trajectory", False)
             self.render_settings["velocity"] = self.render_settings.get("velocity", False)
-            self.render_settings["sensor_type"] = self.render_settings.get("sensor_type", habitat_sim.SensorType.COLOR)
+            self.render_settings["sensor_type"] = self.render_settings.get("sensor_type", "color")
             self.render_settings["mode"] = self.render_settings.get("mode", "fix")
             self.render_settings["view"] = self.render_settings.get("view", "near")
             self.render_settings["resolution"] = self.render_settings.get("resolution", [256, 256])
@@ -319,7 +333,7 @@ class SceneManager(ABC):
 
             return position, rotation
 
-    def set_pose(self, position, rotation):
+    def set_pose(self, position, rotation,velocity=None):
         """_summary_
             set position and rotation of agents in each scene
         Args:
@@ -331,6 +345,7 @@ class SceneManager(ABC):
         )
 
         hab_pos, hab_ori = std_to_habitat(position, rotation)
+        hab_vel, _ = std_to_habitat(velocity, None) if velocity is not None else (None, None)
         drone_id = 0
         for scene_id in range(self.num_scene):
             for agent_id in range(self.num_agent_per_scene):
@@ -344,7 +359,7 @@ class SceneManager(ABC):
                 if self.is_multi_drone or self.render_settings:
                     self._drones[scene_id][agent_id].root_scene_node.transformation = \
                         self.agents[scene_id][agent_id].scene_node.transformation
-        self._update_collision_infos()
+        self._update_collision_infos(velocities=hab_vel)
 
         # if hasattr(self, "_drone"):
         #     # set the pose of objects or agents in the scene
@@ -380,10 +395,16 @@ class SceneManager(ABC):
     def _object_step(self):
         for i in range(self.num_scene):
             self._obj_ctrls[i].step()
-            self.scenes[i].update_dynamic_KDtree()
+            if self.is_object_collidable:
+                self.scenes[i].update_dynamic_KDtree()
         self._update_dynamics()
 
-    def _update_collision_infos(self, indices: Optional[List] = None, sensitive_radius: float = None):
+    def _update_collision_infos(
+            self,
+            indices: Optional[List] = None, 
+            sensitive_radius: float = None,
+            velocities: Optional[np.ndarray] = None,
+        ):
         """_summary_test
             update the collision distance of each agent
             
@@ -396,17 +417,32 @@ class SceneManager(ABC):
 
         sensitive_radius = self.sensitive_radius if sensitive_radius is None else sensitive_radius
 
-        for indice in indices:
+        for indice,vel in zip(indices, velocities):
             scene_id = indice // self.num_agent_per_scene
             agent_id = indice % self.num_agent_per_scene
 
             # test = self.scenes[scene_id].path_finder
-            col_record = self.scenes[scene_id].get_closest_collision_point(
-                pt=self.agents[scene_id][agent_id].scene_node.translation,
-                max_search_radius=sensitive_radius,
-                is_object_collidable=True,
-            )
-            self._collision_point[scene_id][agent_id], self._is_out_bounds[scene_id][agent_id] = col_record.hit_pos, col_record.is_out_bound
+            if self.col_refine_steps > 0:
+                col_records = []
+                dt = np.linspace(0, self.col_refine_dt, self.col_refine_steps + 1)[:-1]
+                ds = vel * dt[:, None]
+                new_positions = self.agents[scene_id][agent_id].scene_node.translation + ds
+                for pos in new_positions:
+                    col_records.append(self.scenes[scene_id].get_closest_collision_point(
+                        pt=pos,
+                        max_search_radius=sensitive_radius,
+                        is_object_collidable=self.is_object_collidable,
+                    )
+                    )
+                self._collision_point[scene_id][agent_id] = [col_record.hit_pos for col_record in col_records]
+                self._is_out_bounds[scene_id][agent_id] = th.as_tensor([col_record.is_out_bound for col_record in col_records]).any()
+            else:
+                col_record = self.scenes[scene_id].get_closest_collision_point(
+                    pt=self.agents[scene_id][agent_id].scene_node.translation,
+                    max_search_radius=sensitive_radius,
+                    is_object_collidable=self.is_object_collidable,
+                )
+                self._collision_point[scene_id][agent_id], self._is_out_bounds[scene_id][agent_id] = col_record.hit_pos, col_record.is_out_bound
 
         if self.is_multi_drone:
             # if indices is None:
@@ -462,12 +498,18 @@ class SceneManager(ABC):
 
     def get_collision_point(self, indices=None):
         if indices is None:
-            return habitat_to_std(np.array(self._collision_point).reshape((-1, 3)), None)[0]
+            if not self.col_refine_steps:
+                return habitat_to_std(np.array(self._collision_point).reshape((-1, 3)), None)[0]
+            else:
+                return habitat_to_std(np.array(self._collision_point).reshape((-1, 3)), None)[0].reshape((-1, self.col_refine_steps, 3))
         else:
             # Convert indices to CPU if it's a tensor
             if hasattr(indices, 'cpu'):
                 indices = indices.cpu()
-            return habitat_to_std(np.array(self._collision_point).reshape((-1, 3))[indices], None)[0]
+            if self.col_refine_steps:
+                return habitat_to_std(np.array(self._collision_point).reshape((-1, 3)), None)[0].reshape((-1, self.col_refine_steps, 3))[indices]
+            else:
+                return habitat_to_std(np.array(self._collision_point).reshape((-1, 3))[indices], None)[0]
 
     def render(
             self,
@@ -771,7 +813,7 @@ class SceneManager(ABC):
         sensor_spec.uuid = "render"
         sensor_spec.resolution = self.render_settings["resolution"]
         sensor_spec.position = mn.Vector3([0, 0, 0])
-        sensor_spec.sensor_type = self.render_settings["sensor_type"]
+        sensor_spec.sensor_type = sensor_type_alias[self.render_settings["sensor_type"]]
         sensor_cfgs_list.append(sensor_spec)
 
         agent_cfg = habitat_sim.agent.AgentConfiguration(
@@ -897,17 +939,18 @@ class SceneManager(ABC):
 
         return reset_pos, reset_ori
 
-    def reset_agents(self, std_positions: Tensor, std_orientations: Tensor, indices: Optional[Tensor] = None, ):
+    def reset_agents(self, std_positions: Tensor, std_orientations: Tensor, indices: Optional[Tensor] = None,std_velocities: Optional[Tensor] = None):
         """
         Summary: external interference to reset all the agents to the initial state
         """
         # indices = [indices] if not hasattr(indices, "__iter__") else indices
         hab_positions, hab_orientations = std_to_habitat(std_positions, std_orientations)
+        hab_velocities, _ = std_to_habitat(std_velocities, None) if std_velocities is not None else (None, None)
         for indice, hab_position, hab_orientation in zip(np.arange(self.num_agent) if indices is None else indices, hab_positions, hab_orientations):
             scene_id = indice // self.num_agent_per_scene
             agent_id = indice % self.num_agent_per_scene
             self._reset_agent(scene_id, agent_id, hab_position, hab_orientation)
-        self._update_collision_infos(indices=indices)
+        self._update_collision_infos(indices=indices,velocities=hab_velocities)
 
     def _reset_agent(self, scene_id: int, agent_id: int, position: np.ndarray, orientation: np.ndarray):
         """_summary_

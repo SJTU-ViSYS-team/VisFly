@@ -25,30 +25,6 @@ def render_fig(fig):
 
     return image_array
 
-# def create_gif(image_list):
-#     gif_buffer = BytesIO()  # 创建一个内存缓冲区
-#     with imageio.get_writer(gif_buffer, mode='I', format='gif', duration=0.5) as writer:
-#         for image in image_list:
-#             writer.append_data(image)  # 将每张图片写入 GIF 数据流
-#
-#     # 2. 将 GIF 数据流转换为 NumPy 数组
-#     gif_buffer.seek(0)  # 将指针移回缓冲区开头
-#     gif_array = imageio.mimread(gif_buffer)  # 读取 GIF 数据流为 NumPy 数组列表
-#     gif_array = np.stack(gif_array)
-#     return gif_array
-
-# def create_movement_image(images):
-#     """
-#     create movement images by merging images
-#     """
-#     image = []
-#     for i in range(len(images)):
-#         if i == 0:
-#             image = images[i]
-#         else:
-#             image = np.hstack((image, images[i]))
-#     return image
-
 class TestBase:
     def __init__(
             self,
@@ -87,7 +63,7 @@ class TestBase:
             is_fig_save: bool = False,
             is_video_save: bool = False,
             render_kwargs={},
-            
+
     ):
         if is_fig_save:
             if not is_fig:
@@ -115,7 +91,7 @@ class TestBase:
 
         while True:
             with th.no_grad():
-                action = policy.predict(obs, deterministic=True)
+                action = policy.predict(obs, deterministic=True, sample=True)
                 if isinstance(action, tuple):
                     action = action[0]
                 # obs, reward, done, info = env.step(action, is_test=True)
@@ -154,14 +130,17 @@ class TestBase:
         # print(f"Average Rewards:{mean_r}, Average Length:{mean_l}")
         # save state_all and obs_all
 
+        figs = self.draw()
 
         if is_fig:
-            figs = self.draw()
-            if is_fig_save:
-                for i, fig in enumerate(figs):
-                    self.save_fig(fig, c=i)
-        else:
-            figs = []
+            for fig in figs:
+                # plt.show fig
+                render_fig(fig)
+
+        if is_fig_save:
+            for i, fig in enumerate(figs):
+                self.save_fig(fig, c=i)
+
         if is_video:
             self.play(is_sub_video=is_sub_video)
             if is_video_save:
@@ -192,9 +171,9 @@ class TestBase:
                     sub_obs = np.hstack(np.transpose(obs[name], (0,2,3,1)))
                     if "semantic" in name:
                         self.max_semantic_id = max(self.max_semantic_id, sub_obs.max().item())
-                        sub_obs = sub_obs/10
+                        sub_obs = sub_obs/20
                     if "depth" in name:
-                        sub_obs= sub_obs/10
+                        sub_obs= sub_obs/20
                     if "color" in name:
                         sub_obs = cv2.cvtColor(sub_obs.astype(np.uint8), cv2.COLOR_RGB2BGR)
                         pass
@@ -225,7 +204,7 @@ class TestBase:
 
         # render video
         path = f"{self.save_path}/video.mp4"
-        video = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'mp4v'), int(1/self.env.envs.dynamics.dt), (width, height))
+        video = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'avc1'), int(1/self.env.envs.dynamics.dt), (width, height))
         # obs video
         path_obs = []
         video_obs = []
@@ -233,7 +212,7 @@ class TestBase:
             for name in self._img_names:
                 path_obs.append(f"{self.save_path}/{name}.mp4")
                 width, height = self.obs_all[0][name].shape[3]*self.obs_all[0][name].shape[0], self.obs_all[0][name].shape[2]
-                video_obs.append(cv2.VideoWriter(path_obs[-1], cv2.VideoWriter_fourcc(*'mp4v'), int(1/self.env.envs.dynamics.dt), (width, height)))
+                video_obs.append(cv2.VideoWriter(path_obs[-1], cv2.VideoWriter_fourcc(*'avc1'), int(1/self.env.envs.dynamics.dt), (width, height)))
 
         # 将图片写入视频
         for index, (image, t, obs) in enumerate(zip(self.render_image_all, self.t, self.obs_all)):
@@ -245,18 +224,20 @@ class TestBase:
                         max_depth = 10
                         img = np.clip(np.hstack(np.transpose(obs[name], (0, 2, 3, 1))),None, max_depth)
                         img = (cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)*255/max_depth).astype(np.uint8)
-                        video_obs[i].write(img)
                     elif "color" in name:
                         img = np.hstack(np.transpose(obs[name], (0, 2, 3, 1)))
                         img = img.astype(np.uint8)
                         # video_obs[i].write(img)
                         img = (cv2.cvtColor(img, cv2.COLOR_RGB2BGR)).astype(np.uint8)
-                        video_obs[i].write(img)
                     elif "semantic" in name:
                         max_id = self.max_semantic_id
                         img = np.hstack(np.transpose(obs[name], (0, 2, 3, 1)))
                         img = (cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)*255/max_id).astype(np.uint8)
-                        video_obs[i].write(img)
+                    else:
+                        raise NotImplementedError
+
+
+                    video_obs[i].write(img)
 
             # save image in cache
             # if index % 4 == 0:

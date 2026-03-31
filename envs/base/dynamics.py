@@ -55,6 +55,8 @@ class Dynamics:
         self._motor_omega = None
         self._thrusts = None
         self._acc = None
+        self._acc_z_body = None
+        self._dacc_z_body = None
         self._angular_acc = None
         self._t = None
         # command format: [gross_thrust / m (z-acc), bodyrate]
@@ -119,8 +121,6 @@ class Dynamics:
         self._t = th.zeros((self.num,), device=self.device)
 
         self._angular_acc = th.zeros((3, self.num), device=self.device)
-        # self._ctrl_i = th.zeros((3, self.num), device=self.device)
-        # self._pre_action = th.zeros((4, self.num), device=self.device)
         self._pre_action = [
             th.zeros((4, self.num), device=self.device)
             for _ in range(self._comm_delay_steps)
@@ -141,15 +141,6 @@ class Dynamics:
                     x2_func = eval("lambda x,y:" + wind_settings[3])
                     y2_func = eval("lambda x,y:" + wind_settings[4])
                     z2_func = eval("lambda x,y:" + wind_settings[5])
-                    # self._wind_velocity_func = lambda x,y,z: th.stack([
-                    #     x_func(x,y),
-                    #     y_func(x,y),
-                    #     z_func(x,y)
-                    # ]) + th.stack([
-                    #     x2_func(x,z),
-                    #     y2_func(x,z),
-                    #     z2_func(x,z)
-                    # ])
                     self._wind_velocity_func1 = lambda x,y: th.stack([
                         x_func(x,y[0]),
                         y_func(x,y[1]),
@@ -191,6 +182,8 @@ class Dynamics:
         self._thrusts = self._thrusts.clone().detach()
         self._angular_acc = self._angular_acc.clone().detach()
         self._acc = self._acc.clone().detach()
+        self._acc_z_body = self._acc_z_body.clone().detach()
+        self._dacc_z_body = self._dacc_z_body.clone().detach()
         self._t = self._t.clone().detach()
         self._pre_action = [
             pre_act.clone().detach() for pre_act in self._pre_action
@@ -245,6 +238,8 @@ class Dynamics:
             # self._ctrl_i = th.zeros((3, self.num), device=self.device)
             self._angular_acc = th.zeros((3, self.num), device=self.device)
             self._acc = th.zeros((3, self.num), device=self.device)
+            self._acc_z_body = th.zeros((1, self.num), device=self.device)
+            self._dacc_z_body = th.zeros((1, self.num), device=self.device)
             self._pre_action = [th.zeros(4, self.num) for _ in range(self._comm_delay_steps)]
             if self._drag_random:
                 self._linear_drag_coeffs = self._linear_drag_coeffs_mean * (((th.rand_like(self._linear_drag_coeffs_mean)-0.5)*2*self._drag_random).clamp(-0.5, .5) + 1)
@@ -262,6 +257,8 @@ class Dynamics:
             # self._ctrl_i[:, indices] = th.zeros((3, len(indices)), device=self.device)
             self._angular_acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
             self._acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
+            self._acc_z_body[:, indices] = th.zeros((1, len(indices)), device=self.device)
+            self._dacc_z_body[:, indices] = th.zeros((1, len(indices)), device=self.device)
             for i in range(self._comm_delay_steps):
                 self._pre_action[i][:, indices] = self._pre_action[i][:, indices] * 0
             
@@ -288,16 +285,16 @@ class Dynamics:
         action = action.clone()
         
         if self.action_type == ACTION_TYPE.BODYRATE:
-            # action format: [thrust/m, bodyrate_x, bodyrate_y, bodyrate_z]
+            # action format: [acc, bodyrate_x, bodyrate_y, bodyrate_z]
             normalized = th.hstack([
-                (action[:, :1] / self.m - self._normal_params["thrust"].mean) / self._normal_params["thrust"].half,
+                (action[:, :1] - self._normal_params["acc"].mean) / self._normal_params["acc"].half,
                 (action[:, 1:] - self._normal_params["bodyrate"].mean) / self._normal_params["bodyrate"].half
             ])
             return normalized
             
         elif self.action_type == ACTION_TYPE.THRUST:
-            # action format: [thrust]
-            normalized = (action / self.m - self._normal_params["thrust"].mean) / self._normal_params["thrust"].half
+            # action format: [acc]
+            normalized = (action - self._normal_params["acc"].mean) / self._normal_params["acc"].half
             return normalized
             
         elif self.action_type == ACTION_TYPE.VELOCITY:
@@ -370,7 +367,7 @@ class Dynamics:
             self._orientation = self._orientation.normalize()
         self._t += self.ctrl_dt
 
-        # self._ugly_fix()  # Re-enabled to prevent position explosion
+        self._ugly_fix()  # Re-enabled to prevent position explosion
 
         return self.state
 
@@ -378,9 +375,10 @@ class Dynamics:
         # Clamp to reasonable values for FSC compatibility
         # X, Y: [-100, 100] meters (large enough for any reasonable scenario)
         # Z: [0, 10] meters (ground to reasonable altitude)
-        self._position[0:2] = self._position[0:2].clamp(-100, 100)  # X, Y
-        self._position[2] = self._position[2].clamp(0, 10)  # Z (altitude)
-        self._velocity = self._velocity.clamp(-10, 10)
+        self._position = th.vstack(
+            [self._position[0:2].clamp(-100, 100), # X, Y
+         self._position[2].clamp(0, 20)])  # Z (altitude))
+        self._velocity = self._velocity.clamp(-20, 20)
         self._angular_velocity = self._angular_velocity.clamp(-10, 10)
         
     def update_wind(self):
@@ -409,6 +407,8 @@ class Dynamics:
                 - self._BODYRATE_PID.d @ self._angular_acc
             # + self._ctrl_i \
 
+            # acc_error = command[0:1, :] - self._acc_z_body
+            # acc_z_des = acc_error * self._THRUST_PID.p
             thrusts_torque = th.cat([command[0:1, :], body_torque_des])
             thrusts_des = self._B_allocation_inv @ thrusts_torque
         elif self.action_type == ACTION_TYPE.VELOCITY:
@@ -571,6 +571,7 @@ class Dynamics:
         self._BODYRATE_PID = PID(p=th.tensor(data["BODYRAYE_PID"]["p"]),
                                  i=th.tensor(data["BODYRAYE_PID"]["i"]),
                                  d=th.tensor(data["BODYRAYE_PID"]["d"]))
+        self._THRUST_PID = PID(p=th.tensor(data["THRUST_PID"]["p"]), i=th.tensor(data["THRUST_PID"]["i"]), d=th.tensor(data["THRUST_PID"]["d"]))
         self._VELOCITY_PID = PID(p=th.tensor(data["VELOCITY_PID"]["p"]), i=th.tensor(data["VELOCITY_PID"]["i"]), d=th.tensor(data["VELOCITY_PID"]["d"]))
         self._POSITION_PID = PID(p=th.tensor(data["POSITION_PID"]["p"]), i=th.tensor(data["POSITION_PID"]["i"]), d=th.tensor(data["POSITION_PID"]["d"]))
         self._kappa = th.tensor(data["kappa"])
@@ -593,6 +594,9 @@ class Dynamics:
         self._bd_rate = bound(
             max=th.tensor(data["max_rate"]), min=th.tensor(-data["max_rate"])
         )
+        self._bd_acc = bound(
+            max=th.tensor(data["max_acc"] * -g[2]), min=th.tensor(0)
+        )
         self._bd_yaw_rate = bound(
             max=th.tensor(data["max_rate"]), min=th.tensor(-data["max_rate"])
         )
@@ -609,23 +613,22 @@ class Dynamics:
         Args:
             normal_range (Tuple[float, float], optional): _description_. Defaults to (-1, 1).
         """
-        thrust_normalize_method = "medium"  # "max_min"
+        thrust_normalize_method = "max_min"
 
         if self.action_type == ACTION_TYPE.BODYRATE:
             max_bias = 1
             if thrust_normalize_method == "medium":
                 # (_, average_)
-                thrust_scale = (self.m * -g[2]) / self.m
+                acc_scale = -g[2]
                 # thrust_scale = (self.m * -g[2]) * 1 / self.m
-                thrust_bias = (self.m * -g[2]) * max_bias / self.m
+                acc_bias =  -g[2] * max_bias
             elif thrust_normalize_method == "max_min":
                 # (min_act, max_act)->(min_thrust, max_thrust) this method try to reach the limit of drone, which is negative for sim2real
-                thrust_scale = (
-                        (self._bd_thrust.max - self._bd_thrust.min)
-                        / self.m
+                acc_scale = (
+                        (self._bd_acc.max - self._bd_acc.min)
                         / (normal_range[1] - normal_range[0])
                 )
-                thrust_bias = self._bd_thrust.max / self.m - thrust_scale * normal_range[1]
+                acc_bias = self._bd_acc.max - acc_scale * normal_range[1]
             else:
                 raise ValueError("thrust_normalize_method should be one of ['medium', 'max_min']")
 
@@ -634,7 +637,7 @@ class Dynamics:
             )
             bodyrate_bias = self._bd_rate.max - bodyrate_scale * normal_range[1]
             self._normal_params = {
-                "thrust": Uniform(mean=thrust_bias, half=thrust_scale).to(self.device),
+                "acc": Uniform(mean=acc_bias, half=acc_scale).to(self.device),
                 "bodyrate": Uniform(mean=bodyrate_bias, half=bodyrate_scale).to(self.device),
             }
 
@@ -645,15 +648,14 @@ class Dynamics:
                 bias = (self.m * -g[2]) / 4 / self.m
             elif thrust_normalize_method == "max_min":
                 scale = (
-                        (self._bd_thrust.max - self._bd_thrust.min)
-                        / self.m
+                        (self._bd_acc.max - self._bd_acc.min)
                         / (normal_range[1] - normal_range[0])
                 )
-                bias = self._bd_thrust.max / self.m - scale * normal_range[1]
+                bias = self._bd_acc.max - scale * normal_range[1]
             else:
                 raise ValueError("thrust_normalize_method should be one of ['medium', 'max_min']")
 
-            self._normal_params = {"thrust": Uniform(mean=bias, half=scale).to(self.device)}
+            self._normal_params = {"acc": Uniform(mean=bias, half=scale).to(self.device)}
 
         elif self.action_type == ACTION_TYPE.VELOCITY:
             spd_scale = (self._bd_spd.max - self._bd_spd.min) / (
@@ -701,14 +703,14 @@ class Dynamics:
 
         if self.action_type == ACTION_TYPE.BODYRATE:
             command = th.hstack([
-                (command[:, :1] * self._normal_params["thrust"].half + self._normal_params["thrust"].mean) * self.m,
+                (command[:, :1] * self._normal_params["acc"].half + self._normal_params["acc"].mean) * self.m,
                 command[:, 1:] * self._normal_params["bodyrate"].half + self._normal_params["bodyrate"].mean
             ]
             )
             return command.T
 
         elif self.action_type == ACTION_TYPE.THRUST:
-            command = self.m * (command * self._normal_params["thrust"].half + self._normal_params["thrust"].mean).T
+            command = self.m * (command * self._normal_params["acc"].half + self._normal_params["acc"].mean).T
             return command
 
         elif self.action_type == ACTION_TYPE.VELOCITY:

@@ -115,7 +115,7 @@ class TensorDict(dict):
     def __getitem__(self, key: Any, keepdim=False) -> Any:
         if isinstance(key, str):
             return super().__getitem__(key)
-        elif isinstance(key, int):
+        elif isinstance(key, int) or isinstance(key, slice):
             return TensorDict({k: th.atleast_2d(v[key]) for k, v in self.items()})
         elif hasattr(key, "__iter__"):
             # Convert key to CPU if it's a tensor to avoid device mismatch
