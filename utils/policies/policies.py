@@ -59,11 +59,13 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
         "StateImageExtractor": StateImageExtractor,
         "StateTargetImageExtractor": StateTargetImageExtractor,
         "StateGateExtractor": StateGateExtractor,
+        "FlexibleExtractor": FlexibleExtractor,
     }
     activation_fn_alias = {
         "relu": nn.ReLU,
         "tanh": nn.Tanh,
         "elu": nn.ELU,
+        "leaky_relu": nn.LeakyReLU,
     }
     recurrent_alias: Dict = {"GRU": th.nn.GRU}
     """

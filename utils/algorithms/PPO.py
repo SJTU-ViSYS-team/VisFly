@@ -86,7 +86,8 @@ class PPO(ori_PPO):
                 "This may cause issues if the environment expects tensor outputs."
             )
 
-    def create_save_path(self, save_path, comment=None):
+    def create_save_path(self, save_path=None, comment=None):
+        save_path = self.save_path if save_path is None else save_path
         self.comment = self.comment if comment is None else comment
         self.comment = "std" if self.comment is None else self.comment
         index = 1

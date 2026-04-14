@@ -61,7 +61,8 @@ class HoverEnv(DroneGymEnvsBase):
 
     def get_observation(
             self,
-            indices=None
+            indices=None,
+            predicted_obs=None,
     ) -> Dict:
         obs = TensorDict({
             "state": self.state,
@@ -134,7 +135,8 @@ class HoverEnv2(HoverEnv):
 
     def get_observation(
             self,
-            indices=None
+            indices=None,
+            predicted_obs=None,
     ) -> Dict:
         dis_scale = (self.target - self.position).norm(dim=1, keepdim=True).detach().clamp_min(self.max_sense_radius)
         state = th.hstack([

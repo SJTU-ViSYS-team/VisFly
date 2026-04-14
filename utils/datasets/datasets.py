@@ -83,6 +83,54 @@ class SceneGeneratorSetting:
     stage: str
     object_set: str
 
+
+# =========================
+# 采样方案 B：best-candidate（更随机但会“铺开”）
+# =========================
+def best_candidate_points(bounds: np.ndarray,
+                          num_points: int,
+                          k: int = 80,
+                          seed: int = None) -> np.ndarray:
+    """
+    Mitchell best-candidate：每次从k个随机候选里选“离已有点最远”的那个，减少近邻挤堆。
+    支持 bounds 的每一维顺序可能是 [min,max] 或 [max,min]。
+
+    bounds: shape (2,3)
+    num_points: 点数
+    k: 每轮候选点数
+    seed: 随机种子
+    """
+    bounds = np.asarray(bounds, dtype=float)
+    assert bounds.shape == (2, 3), "bounds must be a (2,3) array"
+    assert num_points >= 1, "num_points must be >= 1"
+    assert k >= 1, "k must be >= 1"
+
+    # ✅ 关键：逐维归一化，兼容 bounds 顺序反过来
+    bmin = np.minimum(bounds[0], bounds[1])
+    bmax = np.maximum(bounds[0], bounds[1])
+    span = bmax - bmin
+
+    rng = np.random.default_rng(seed)
+
+    pts = np.empty((num_points, 3), dtype=float)
+
+    # 第一 个点：在每维范围内均匀采样（退化维度自动固定）
+    pts[0] = bmin + rng.random(3) * span
+
+    for i in range(1, num_points):
+        # 生成候选点（每一维按 [bmin,bmax] 采样）
+        cand = bmin + rng.random((k, 3)) * span
+
+        # 计算每个候选点到已选点集的最小距离
+        diff = cand[:, None, :] - pts[None, :i, :]
+        dist2 = np.sum(diff * diff, axis=2)
+        min_dist2 = dist2.min(axis=1)
+
+        # 选“最远的那个”
+        pts[i] = cand[int(np.argmax(min_dist2))]
+
+    return pts
+
 def fake_rand_distribution(range: np.ndarray, num_of_points: int) -> np.ndarray:
     """
     在给定范围内生成均匀分布的伪随机点。
@@ -236,7 +284,7 @@ class SceneGenerator:
             return [[0, -15, 0], [30, 15, 8.]]
         elif "box30_wall_high" in stage_name or "box30_high" in stage_name or "plane30_high" in stage_name:
             return [[0, -30, 0], [60, 30, 10.]]
-        elif "box30_wall" in stage_name or "box30" in stage_name:
+        elif "box30_wall" in stage_name or "box30" or "plane30" in stage_name:
             return [[0, -30, 0], [60, 30, 4.]]
 
         scene_json = empty_scene.copy()
@@ -306,7 +354,8 @@ class SceneGenerator:
 
         # Generate random positions within bounds
         positions = [np.random.uniform(bounds[0,:], bounds[1,:]) for _ in range(num_points)]
-        positions = fake_rand_distribution(bounds, num_points)
+        # positions = fake_rand_distribution(bounds, num_points)
+        positions = best_candidate_points(bounds, num_points, k=80)
         # Generate random orientations (quaternions)
         orientations = []
         for _ in range(num_points):
@@ -489,7 +538,7 @@ if __name__ == "__main__":
     elif args.scene == "box15_wall":
         object_margin = np.array([[2, 0, 0], [2, 0, 8]])
     elif args.scene == "box30_wall" or args.scene == "box30"or args.scene == "plane30":
-        object_margin = np.array([[4, 0, 1], [4, 0, 1]])
+        object_margin = np.array([[4, 4, 0], [4, 4, 0]])
     elif args.scene == "box30_wall_high" or args.scene == "box30_high"or args.scene == "plane30_high":
         object_margin = np.array([[4, 4, 0], [4, 4, 10]])
 
@@ -500,15 +549,15 @@ if __name__ == "__main__":
         setting=SceneGeneratorSetting(
             object_dense=args.density,
             object_scale=0,
-            object_rotate=0,
+            object_rotate=1,
             object_margin=object_margin,  # camera coordinate [[back, right, down],[front, left, up]]
             # object_margin=(0, 0, 0),
             light_random=False,
             stage=args.scene,
             # object_set="objects/pillar"
             # object_set="objects/tree"
-            object_set="objects/tree2"
-            # object_set="objects/simple_objects"
+            # object_set="objects/tree"
+            object_set="objects/simple_objects"
     )
     )
     if args.generate:
