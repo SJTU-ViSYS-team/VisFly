@@ -341,12 +341,13 @@ class Integrator:
                 J_inv=J_inv,
                 wind=wind,
             )
-            pos += d_pos * dt
-            ori += d_ori * dt
-            vel += d_vel * dt
-            ori_vel += d_ori_vel * dt
-
-            # ori = ori / ori.norm()
+            # Functional (not in-place): += bumps the autograd version of
+            # the tensor passed in, which breaks BPTT backward when rewards
+            # saved a view into it (``self.position = self._position.T``).
+            pos = pos + d_pos * dt
+            ori = ori + d_ori * dt
+            vel = vel + d_vel * dt
+            ori_vel = ori_vel + d_ori_vel * dt
 
             return pos, ori, vel, ori_vel, d_ori_vel
 
@@ -378,10 +379,11 @@ class Integrator:
                         J_inv=J_inv
                     )
             # f"w_cache: {ori_vel_cache} quat:{ori_cache} d_ori:{d_ori[:,:,index]}"
-            pos += d_pos @ ks * dt
-            ori += d_ori @ ks * dt
-            vel += d_vel @ ks * dt
-            ori_vel += d_ori_vel @ ks * dt
+            # Functional (not in-place); see euler branch for rationale.
+            pos = pos + d_pos @ ks * dt
+            ori = ori + d_ori @ ks * dt
+            vel = vel + d_vel @ ks * dt
+            ori_vel = ori_vel + d_ori_vel @ ks * dt
 
             return pos, ori, vel, ori_vel, d_ori_vel
 
