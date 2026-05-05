@@ -1,6 +1,7 @@
 import habitat_sim
 import os
 import sys
+import warnings
 from habitat_sim import SensorType
 
 from .ObjectManger import ObjectManager
@@ -21,6 +22,28 @@ from abc import ABC
 from .test.mesh_plot import plot_triangle_mesh, plot_rectangle_mesh
 
 DEBUG = False
+
+
+def _as_list(value):
+    return value if isinstance(value, list) else [value]
+
+
+ROTOR_NODE_NAMES = [
+    "Rear Right rotation parent",
+    "Front Right rotation parent",
+    "Rear Left rotation parent",
+    "Front Left Rotation parent",
+]
+# Betaflight QUADX motor order: M1 rear-right, M2 front-right, M3 rear-left, M4 front-left.
+# Betaflight yaw sign convention is 1.0 = CCW, -1.0 = CW.
+ROTOR_SPIN_DIRECTIONS = [-1.0, 1.0, 1.0, -1.0]
+DJI_MAVIC_ROTOR_CENTERS = np.asarray([
+    [-0.08420575, 0.01683210, -0.07794943],
+    [-0.08793664, 0.04361732, 0.04638715],
+    [0.08420575, 0.01683210, -0.07794943],
+    [0.08767877, 0.04420731, 0.04635151],
+], dtype=np.float32)
+
 
 sensor_type_alias = {
     "depth": SensorType.DEPTH,
@@ -202,9 +225,10 @@ class SceneManager(ABC):
             self._drones = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
 
         if self.render_settings is not None:
-            self.render_settings["object_path"] = self.render_settings.get("object_path", self._drone_path)
+            self.render_settings["object_path"] = _as_list(self.render_settings.get("object_path", self._drone_path))
             self.render_settings["line_width"] = self.render_settings.get("line_width", 1.0)
             self.render_settings["axes"] = self.render_settings.get("axes", False)
+            self.render_settings["rotors"] = self.render_settings.get("rotors", True)
             self.render_settings["trajectory"] = self.render_settings.get("trajectory", False)
             self.render_settings["velocity"] = self.render_settings.get("velocity", False)
             self.render_settings["sensor_type"] = self.render_settings.get("sensor_type", "color")
@@ -221,6 +245,10 @@ class SceneManager(ABC):
             self._render_camera = [None for _ in range(num_scene)]
             self._line_mgrs: habitat_sim.gfx.DebugLineRender = [None for _ in range(num_scene)]
             self._drones = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
+            self._drone_rotor_nodes = [[[] for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
+            self._drone_rotor_base_rotations = [[[] for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
+            self._drone_rotor_phase = np.zeros((num_scene, num_agent_per_scene, 4), dtype=np.float32)
+            self._drone_rotor_warning_shown = [[False for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
 
         self.trajectory = [[[] for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
         self._collision_point = [[None for _ in range(num_agent_per_scene)] for _ in range(num_scene)]
@@ -391,6 +419,41 @@ class SceneManager(ABC):
     def step(self):
         if self.obj_settings:
             self._object_step()
+
+    def update_rotors(self, motor_omega, dt: float):
+        if self.render_settings is None or not hasattr(self, "_drone_rotor_nodes"):
+            return
+        if not self.render_settings["rotors"]:
+            return
+
+        if hasattr(motor_omega, "detach"):
+            motor_omega = motor_omega.detach().cpu().numpy()
+        motor_omega = np.asarray(motor_omega, dtype=np.float32)
+        if motor_omega.shape[0] != self.num_agent:
+            raise ValueError(f"motor_omega should have shape ({self.num_agent}, 4), got {motor_omega.shape}")
+
+        two_pi = np.float32(2 * np.pi)
+        spin_axis = mn.Vector3.y_axis()
+        for drone_id, rotor_omega in enumerate(motor_omega):
+            scene_id = drone_id // self.num_agent_per_scene
+            agent_id = drone_id % self.num_agent_per_scene
+            rotor_nodes = self._drone_rotor_nodes[scene_id][agent_id]
+            if len(rotor_nodes) != 4:
+                continue
+
+            self._drone_rotor_phase[scene_id, agent_id] = (
+                    self._drone_rotor_phase[scene_id, agent_id]
+                    + rotor_omega[:4] * np.asarray(ROTOR_SPIN_DIRECTIONS, dtype=np.float32) * dt
+            ) % two_pi
+
+            for rotor_id, rotor_node in enumerate(rotor_nodes):
+                rotor_node.rotation = (
+                        self._drone_rotor_base_rotations[scene_id][agent_id][rotor_id]
+                        * mn.Quaternion.rotation(
+                            mn.Rad(float(self._drone_rotor_phase[scene_id, agent_id, rotor_id])),
+                            spin_axis,
+                        )
+                )
 
     def _object_step(self):
         for i in range(self.num_scene):
@@ -859,11 +922,13 @@ class SceneManager(ABC):
                 self._line_mgrs[scene_id].set_line_width(self.render_settings["line_width"])
                 # create objects in each scene
                 for agent_id in range(self.num_agent_per_scene):
+                    object_paths = self.render_settings["object_path"] if self.render_settings is not None else self._drone_path
                     self._drones[scene_id][agent_id] = self._obj_mgrs[scene_id].add_object_by_template_handle(
-                        self._drone_path[agent_id % len(self._drone_path)]
+                        object_paths[agent_id % len(object_paths)]
                     )
                     if not self._drones[scene_id][agent_id]:
                         raise AttributeError
+                    self._cache_drone_rotor_nodes(scene_id, agent_id)
 
             # if self.is_multi_drone:
                 # if self._drones[scene_id][0] is None:
@@ -889,6 +954,69 @@ class SceneManager(ABC):
 
         if self._obj_ctrls[0]:
             self._update_dynamics()
+
+    def _cache_drone_rotor_nodes(self, scene_id: int, agent_id: int):
+        if self.render_settings is None:
+            return
+
+        root_node = self._drones[scene_id][agent_id].root_scene_node
+        rotor_nodes = [self._find_child_node(root_node, name) for name in ROTOR_NODE_NAMES]
+        if any(node is None for node in rotor_nodes):
+            rotor_nodes = self._find_mavic_rotor_nodes(self._drones[scene_id][agent_id])
+        if any(node is None for node in rotor_nodes):
+            self._drone_rotor_nodes[scene_id][agent_id] = []
+            self._drone_rotor_base_rotations[scene_id][agent_id] = []
+            if self.render_settings["rotors"] and not self._drone_rotor_warning_shown[scene_id][agent_id]:
+                warnings.warn(
+                    "render_settings.rotors is enabled, but no rotor nodes were detected "
+                    f"for drone scene_id={scene_id}, agent_id={agent_id}. "
+                    "Rotor animation will be skipped for this drone mesh. "
+                    "Use a Mavic asset or add rotor node names/pivots for this mesh.",
+                    RuntimeWarning,
+                )
+                self._drone_rotor_warning_shown[scene_id][agent_id] = True
+            return
+
+        self._drone_rotor_nodes[scene_id][agent_id] = rotor_nodes
+        self._drone_rotor_base_rotations[scene_id][agent_id] = [
+            node.rotation for node in rotor_nodes
+        ]
+        self._drone_rotor_phase[scene_id, agent_id] = 0
+
+    @staticmethod
+    def _find_mavic_rotor_nodes(drone):
+        rotor_nodes = []
+        visual_nodes = getattr(drone, "visual_scene_nodes", [])
+        visual_nodes = visual_nodes() if callable(visual_nodes) else visual_nodes
+        for rotor_center in DJI_MAVIC_ROTOR_CENTERS:
+            match = None
+            for node in visual_nodes:
+                if np.linalg.norm(np.asarray(node.translation, dtype=np.float32) - rotor_center) < 1e-4:
+                    match = node
+                    break
+            rotor_nodes.append(match)
+        return rotor_nodes
+
+    def _find_child_node(self, root_node, name: str):
+        if getattr(root_node, "name", None) == name:
+            return root_node
+
+        for child in self._iter_child_nodes(root_node):
+            match = self._find_child_node(child, name)
+            if match is not None:
+                return match
+        return None
+
+    @staticmethod
+    def _iter_child_nodes(root_node):
+        for attr_name in ("children", "children_recursive"):
+            children = getattr(root_node, attr_name, None)
+            if children is None:
+                continue
+            children = children() if callable(children) else children
+            for child in children:
+                yield child
+            return
 
     def _load_scene(self, scene_path) -> habitat_sim.Simulator:
         """_summary_
@@ -1061,4 +1189,3 @@ class SceneManager(ABC):
     #         return [obj_ctrl.position for obj_ctrl in self._obj_ctrls for _ in range(self.num_agent_per_scene)]
     #     else:
     #         return None
-
