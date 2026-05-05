@@ -5,7 +5,7 @@ import torch.nn as nn
 import numpy as np
 from stable_baselines3.common.policies import ActorCriticPolicy, MultiInputActorCriticPolicy, BaseModel
 from typing import Tuple, Callable, Any
-from gym import spaces
+from gymnasium import spaces
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, CombinedExtractor
 from typing import List, Optional, Type, Union, Dict
 

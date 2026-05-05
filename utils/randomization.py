@@ -74,7 +74,8 @@ class StateRandomizer:
 
         generate_step = 0
         if self.is_collision_func is not None:
-            is_collision = self.is_collision_func(std_positions=position, scene_id=self.scene_id, uav_radius=1.0)
+            uav_radius = 1.0
+            is_collision = self.is_collision_func(std_positions=position, scene_id=self.scene_id, uav_radius=uav_radius)
             while True:
                 if not is_collision.any():
                     break
@@ -88,7 +89,7 @@ class StateRandomizer:
                 # orientation[is_collision, :] = (2 * th.rand(is_collision.sum(), 3) - 1) * self.orientation.half + self.orientation.mean
                 # velocity[is_collision, :] = (2 * th.rand(is_collision.sum(), 3) - 1) * self.velocity.half + self.velocity.mean
                 # angular_velocity[is_collision, :] = (2 * th.rand(is_collision.sum(), 3) - 1) * self.angular_velocity.half + self.angular_velocity.mean
-                is_collision = self.is_collision_func(std_positions=position, scene_id=self.scene_id)
+                is_collision = self.is_collision_func(std_positions=position, scene_id=self.scene_id, uav_radius=uav_radius)
                 if generate_step > 100:
                     print("Warning: Randomizer safe_generate too much times.")
 

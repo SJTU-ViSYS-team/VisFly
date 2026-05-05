@@ -549,13 +549,13 @@ class SceneManager(ABC):
         min_distance = np.empty(len(hab_positions), dtype=np.float32)
         is_out_bounds = np.empty(len(hab_positions), dtype=bool)
         for indice, hab_position in enumerate(hab_positions):
-            col_record = \
-                self.scenes[scene_id].get_closest_collision_point(
-                    pt=hab_position.reshape(3, 1),
-                    max_search_radius=uav_radius
-                )
+            hab_position = np.asarray(hab_position, dtype=np.float32).reshape(3)
+            col_record = self.scenes[scene_id].get_closest_collision_point(
+                pt=hab_position,
+                max_search_radius=uav_radius,
+            )
 
-            min_distance[indice] = np.linalg.norm((col_record.hit_pos - hab_position))
+            min_distance[indice] = np.linalg.norm(np.asarray(col_record.hit_pos) - hab_position)
             is_out_bounds[indice] = col_record.is_out_bound
         return (min_distance < uav_radius) | is_out_bounds
 

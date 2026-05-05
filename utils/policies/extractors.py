@@ -1,11 +1,11 @@
 from abc import abstractmethod
 
-import gym
 import torch as th
 import torch.nn as nn
 import numpy as np
 from typing import Tuple, Callable, Any
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 from typing import List, Optional, Type, Union, Dict
 
 from torch import Tensor
@@ -869,4 +869,3 @@ def load_extractor_class(cls):
         return cls_alias[cls]
     else:
         raise ValueError(f"Extractor class {cls} not found in alias. Available classes: {list(cls_alias.keys())}")
-

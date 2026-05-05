@@ -3,7 +3,7 @@ import warnings
 from collections import deque
 from typing import Union, Optional, Dict, Generator, Any, NamedTuple, List, Tuple
 import numpy as np
-from gym.vector.utils import spaces
+from gymnasium import spaces
 from stable_baselines3.common.buffers import BaseBuffer
 import torch as th
 from stable_baselines3.common.type_aliases import RolloutBufferSamples, DictRolloutBufferSamples, ReplayBufferSamples, DictReplayBufferSamples
@@ -1247,4 +1247,3 @@ class SimpleRolloutBuffer:
         self.done = th.vstack(self.done).flatten()
         self.episode_done = th.vstack(self.episode_done).flatten()
         self.returns = th.vstack(self.returns).flatten()
-

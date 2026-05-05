@@ -1,6 +1,6 @@
 from typing import Optional, Union, List, Type, Dict, Any
 
-from gym.vector.utils import spaces
+from gymnasium import spaces
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, FlattenExtractor, CombinedExtractor
 from stable_baselines3.common.type_aliases import Schedule
 from stable_baselines3.sac.policies import SACPolicy as sb_SACPolicy

@@ -1,4 +1,4 @@
-from gymnasium.vector.utils import spaces
+from gymnasium import spaces
 from stable_baselines3.common.preprocessing import get_action_dim
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, FlattenExtractor
 from stable_baselines3.common.type_aliases import Schedule, PyTorchObs
@@ -186,4 +186,3 @@ class MultiInputDMPolicy(DMPolicy):
             bn=bn,
             ln=ln
         )
-

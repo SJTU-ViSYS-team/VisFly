@@ -202,9 +202,20 @@ class TestBase:
         if not os.path.exists(f"{self.save_path}/cache"):
             os.makedirs(f"{self.save_path}/cache")
 
+        fps = int(1 / self.env.envs.dynamics.dt)
+        codecs = ("avc1", "mp4v")
+
+        def open_video_writer(path, size):
+            for codec in codecs:
+                writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*codec), fps, size)
+                if writer.isOpened():
+                    return writer
+                writer.release()
+            raise RuntimeError(f"Failed to open video writer for {path}")
+
         # render video
         path = f"{self.save_path}/video.mp4"
-        video = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'avc1'), int(1/self.env.envs.dynamics.dt), (width, height))
+        video = open_video_writer(path, (width, height))
         # obs video
         path_obs = []
         video_obs = []
@@ -212,7 +223,7 @@ class TestBase:
             for name in self._img_names:
                 path_obs.append(f"{self.save_path}/{name}.mp4")
                 width, height = self.obs_all[0][name].shape[3]*self.obs_all[0][name].shape[0], self.obs_all[0][name].shape[2]
-                video_obs.append(cv2.VideoWriter(path_obs[-1], cv2.VideoWriter_fourcc(*'avc1'), int(1/self.env.envs.dynamics.dt), (width, height)))
+                video_obs.append(open_video_writer(path_obs[-1], (width, height)))
 
         # 将图片写入视频
         for index, (image, t, obs) in enumerate(zip(self.render_image_all, self.t, self.obs_all)):

@@ -103,7 +103,7 @@ class HoverEnv2(HoverEnv):
             seed: int = 42,
             visual: bool = True,
             requires_grad: bool = False,
-            random_kwargs: dict = {},
+            random_kwargs: dict = None,
             dynamics_kwargs: dict = {},
             scene_kwargs: dict = {},
             sensor_kwargs: list = [],
@@ -150,7 +150,6 @@ class HoverEnv2(HoverEnv):
             "state": state,
             # "depth": th.as_tensor(self.sensor_obs["depth"]/10).clamp(max=1)
         })
-
 
 
 
