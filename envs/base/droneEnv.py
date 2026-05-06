@@ -374,6 +374,7 @@ class DroneEnvsBase:
         self.dynamics.step(action)
         if self.visual:
             self.sceneManager.set_pose(self.dynamics.position, self.dynamics._orientation.toTensor().T, self.dynamics.velocity)
+            self.sceneManager.update_rotors(self.dynamics.motor_omega, self.dynamics.ctrl_dt)
             self.sceneManager.step()
         self.update_observation()
         self.update_collision()
