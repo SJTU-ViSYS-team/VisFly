@@ -246,25 +246,35 @@ class Dynamics:
                 self._quad_drag_coeffs = self._quad_drag_coeffs_mean * (((th.rand_like(self._quad_drag_coeffs_mean)-0.5)*2*self._drag_random).clamp(-0.5, .5) + 1)
 
         else:
-            self._position[:, indices] = th.zeros((3, len(indices)), device=self.device) if pos is None else pos.T
-            self._orientation[indices] = Quaternion(num=len(indices), device=self.device) if ori is None else Quaternion(*ori.T)
-            self._velocity[:, indices] = th.zeros((3, len(indices)), device=self.device) if vel is None else vel.T
-            self._angular_velocity[:, indices] = th.zeros((3, len(indices)), device=self.device) if ori_vel is None else ori_vel.T
-            self._motor_omega[:, indices] = th.ones((4, len(indices)), device=self.device) * self._init_motor_omega if motor_omega is None else motor_omega.T
-            self._thrusts[:, indices] = th.ones((4, len(indices)), device=self.device) * self._init_thrust if thrusts is None else thrusts.T
-            self._t[indices] = th.zeros((len(indices),), device=self.device) if t is None else t
-            self._t[indices] = th.zeros((len(indices),), device=self.device) + th.rand((len(indices),)) * 3.14*2 if t is None else t
-            # self._ctrl_i[:, indices] = th.zeros((3, len(indices)), device=self.device)
-            self._angular_acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
-            self._acc[:, indices] = th.zeros((3, len(indices)), device=self.device)
-            self._acc_z_body[:, indices] = th.zeros((1, len(indices)), device=self.device)
-            self._dacc_z_body[:, indices] = th.zeros((1, len(indices)), device=self.device)
-            for i in range(self._comm_delay_steps):
-                self._pre_action[i][:, indices] = self._pre_action[i][:, indices] * 0
-            
+            # Functional ``index_copy``: rebinding ``self._*`` to a fresh
+            # tensor never bumps the autograd version of the tensor the
+            # BPTT backward graph still holds as a saved view.
+            # ``cp`` aligns ``idx`` and ``src`` to the buffer's own device so
+            # this works even when individual buffers (e.g. ``_pre_action``)
+            # were created without ``device=self.device`` or when the caller
+            # passes a CPU ``indices`` tensor while buffers live on cuda.
+            n = len(indices)
+            idx = th.as_tensor(indices).long()
+            z3, z4, z1 = (th.zeros((d, n), device=self.device) for d in (3, 4, 1))
+            cp = lambda buf, src, dim=1: buf.index_copy(dim, idx.to(buf.device), src.to(buf.device))
+
+            self._position         = cp(self._position,         pos.T     if pos     is not None else z3)
+            self._velocity         = cp(self._velocity,         vel.T     if vel     is not None else z3)
+            self._angular_velocity = cp(self._angular_velocity, ori_vel.T if ori_vel is not None else z3)
+            self._motor_omega      = cp(self._motor_omega, motor_omega.T if motor_omega is not None else z4 + self._init_motor_omega)
+            self._thrusts          = cp(self._thrusts,     thrusts.T     if thrusts     is not None else z4 + self._init_thrust)
+            self._angular_acc      = cp(self._angular_acc, z3)
+            self._acc              = cp(self._acc,         z3)
+            self._acc_z_body       = cp(self._acc_z_body,  z1)
+            self._dacc_z_body      = cp(self._dacc_z_body, z1)
+            self._t                = cp(self._t, t if t is not None else th.rand(n, device=self.device) * 3.14 * 2, dim=0)
+            self._orientation[indices] = Quaternion(num=n, device=self.device) if ori is None else Quaternion(*ori.T)
+            self._pre_action       = [cp(pa, th.zeros((4, n), device=self.device)) for pa in self._pre_action]
+
             if self._drag_random:
-                self._linear_drag_coeffs[:, indices] = self._linear_drag_coeffs_mean * (((th.rand_like(self._linear_drag_coeffs_mean[:,indices])-0.5)*2*self._drag_random).clamp(-0.5, .5) + 1)
-                self._quad_drag_coeffs[:, indices] = self._quad_drag_coeffs_mean * (((th.rand_like(self._quad_drag_coeffs_mean[:,indices])-0.5)*2*self._drag_random).clamp(-0.5, .5) + 1)
+                jitter = lambda mean: mean[:, idx] * (((th.rand_like(mean[:, idx]) - 0.5) * 2 * self._drag_random).clamp(-0.5, 0.5) + 1)
+                self._linear_drag_coeffs = cp(self._linear_drag_coeffs, jitter(self._linear_drag_coeffs_mean))
+                self._quad_drag_coeffs   = cp(self._quad_drag_coeffs,   jitter(self._quad_drag_coeffs_mean))
 
         return self.state
 
