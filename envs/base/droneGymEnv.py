@@ -334,17 +334,13 @@ class DroneGymEnvsBase(VecEnv):
         agent_indices = ((th.tile(th.arange(self.num_agent_per_scene), (len(scene_indices), 1))
                           + (scene_indices.unsqueeze(1) * self.num_agent_per_scene)).reshape(-1, 1)).flatten()
         self._reset_attr(indices=agent_indices)
-        return self.get_full_observation(agent_indices)
+        return self.get_full_observation()
 
     def reset_agent_by_id(self, agent_indices=None, state=None, reset_obs=None):
         assert ~(state is None and reset_obs is None) or (state is not None and reset_obs is not None)
         assert not isinstance(agent_indices, bool)
-        if state is None:
-            if hasattr(self, "replay_buffer") and self.replay_buffer.pos:
-                num = len(agent_indices) if agent_indices is not None else self.num_agent
-                state = self.replay_buffer.sample(num, env_indices=agent_indices)[-1]
-        self.envs.reset_agents(agent_indices, state=state, pos_reset_by_state=True)
-        self.get_full_observation(agent_indices)
+        self.envs.reset_agents(agent_indices, state=state)
+        self.get_full_observation()
         self._reset_attr(indices=agent_indices)
         return self._observations
 
@@ -457,8 +453,8 @@ class DroneGymEnvsBase(VecEnv):
         }
         return observations
 
-    def get_full_observation(self, indice=None,predicted_obs=None):
-        obs = self.get_observation(predicted_obs=predicted_obs)
+    def get_full_observation(self):
+        obs = self.get_observation()
         assert isinstance(obs, TensorDict)
 
         if self.deter is not None:
@@ -466,7 +462,10 @@ class DroneGymEnvsBase(VecEnv):
             obs.update({"stoch": self.stoch})
 
         self._observations = self._format_obs(obs.as_tensor(device=self.device))
+        # if indice is None:
         return self._observations
+        # else:
+        #     return self._observations[indice]
 
     def close(self):
         self.envs.close()

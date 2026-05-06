@@ -15,6 +15,32 @@ from .maths import Quaternion
 from .type import TensorDict
 
 
+def safe_clone(value):
+    if isinstance(value, Tensor):
+        return value.clone()
+    elif hasattr(value, "__iter__"):
+        return [safe_clone(i) for i in value]
+
+def safe_detach(value):
+    if isinstance(value, Tensor):
+        return value.detach()
+    elif hasattr(value, "__iter__"):
+        return [safe_detach(i) for i in value]
+    elif isinstance(value, dict):
+        return {k: safe_detach(v) for k, v in value.items()}
+    else:
+        return value
+
+def safe_cpu(value):
+    if isinstance(value, Tensor):
+        return value.cpu()
+    elif hasattr(value, "__iter__"):
+        return [safe_cpu(i) for i in value]
+    elif isinstance(value, dict):
+        return {k: safe_cpu(v) for k, v in value.items()}
+    else:
+        return value
+
 def obs_list2array(obs_dict: List, row: int, column: int):
     obs_indice = 0
     obs_array = []

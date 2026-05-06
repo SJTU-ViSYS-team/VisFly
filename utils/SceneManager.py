@@ -389,12 +389,12 @@ class SceneManager(ABC):
                         self.agents[scene_id][agent_id].scene_node.transformation
         self._update_collision_infos(velocities=hab_vel)
 
-        # if hasattr(self, "_drone"):
-        #     # set the pose of objects or agents in the scene
-        #     for scene_id in range(self.num_scene):
-        #         for agent_id in range(self.num_agent_per_scene):
-        #             self._drones[scene_id][agent_id].root_scene_node.transformation = \
-        #                 self.agents[scene_id][agent_id].scene_node.transformation
+        if self.render_settings is not None or self.is_multi_drone:
+            # set the pose of objects or agents in the scene
+            for scene_id in range(self.num_scene):
+                for agent_id in range(self.num_agent_per_scene):
+                    self._drones[scene_id][agent_id].root_scene_node.transformation = \
+                        self.agents[scene_id][agent_id].scene_node.transformation
 
     def get_observation(self, indices: Optional[int] = None):
         """_summary_

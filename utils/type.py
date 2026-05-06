@@ -101,6 +101,12 @@ class SortDict(dict):
 class TensorDict(dict):
     def __init__(self, data):
         super().__init__(data)
+        self.tensor_check()
+
+    def tensor_check(self):
+        for key, value in self.items():
+            if not isinstance(value, th.Tensor):
+                raise TypeError(f"Value for key '{key}' is not a tensor. Found type: {type(value)}")
 
     # return a new detach, do not change instance itself
     def detach(self):
@@ -122,6 +128,7 @@ class TensorDict(dict):
             if hasattr(key, 'cpu'):
                 key = key.cpu()
             return TensorDict({k: th.atleast_2d(v[key]) for k, v in self.items()})
+
         else:
             raise TypeError("Invalid key type. Must be either str or int.")
 
