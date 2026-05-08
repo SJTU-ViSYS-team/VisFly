@@ -1,0 +1,35 @@
+env:
+  num_agent_per_scene: 3
+  num_scene: 24
+  random_kwargs:
+    state_generator:
+      class: Uniform
+      kwargs:
+        - position:
+            mean: [1.0, 0.0, 1.5]
+            half: [0.0, 2.0, 1.0]
+  visual: True
+  max_episode_steps: 256
+  scene_kwargs:
+    path: VisFly/datasets/visfly-beta/configs/scenes/garage_crossing
+  dynamics_kwargs:
+    dt: 0.03
+    ctrl_dt: 0.03
+    action_type: bodyrate
+    ctrl_delay: True
+  sensor_kwargs:
+    - sensor_type: DEPTH
+      uuid: depth
+      resolution: [64, 64]
+
+eval_env:
+  num_agent_per_scene: 3
+  visual: True
+  scene_kwargs:
+    render_settings:
+      mode: fix
+      view: top
+      resolution: [1080, 1920]
+      position: [[7.0, 0.0, 7.5]]
+      trajectory: True
+      line_width: 6.0

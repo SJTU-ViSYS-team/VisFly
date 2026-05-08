@@ -62,7 +62,8 @@ class NavigationEnv(DroneGymEnvsBase):
 
     def get_observation(
             self,
-            indices=None
+            indices=None,
+            predicted_obs=None,
     ) -> Dict:
 
         if self.visual:
@@ -81,7 +82,7 @@ class NavigationEnv(DroneGymEnvsBase):
         return (self.position - self.target).norm(dim=1) <= self.success_radius
 
     # For VisFly Manuscript
-    def get_reward(self) -> th.Tensor:
+    def get_reward(self, predicted_obs=None) -> th.Tensor:
         # precise and stable target flight
         base_r = 0.1
         thrd_perce = th.pi / 18
@@ -161,7 +162,8 @@ class NavigationEnv2(DroneGymEnvsBase):
 
     def get_observation(
             self,
-            indices=None
+            indices=None,
+            predicted_obs=None,
     ) -> Dict:
         # scale = (self.target - self.position).norm(dim=1, keepdim=True).detach().clamp_min(self.max_sense_radius)
         # rescale_state = self.envs.transform_2_local_axes((self.target - self.position) / scale)
@@ -183,7 +185,7 @@ class NavigationEnv2(DroneGymEnvsBase):
         })
 
     # For VisFly Manuscript
-    def get_reward(self) -> th.Tensor:
+    def get_reward(self, predicted_obs=None) -> th.Tensor:
         # precise and stable target flight
         base_r = 0.1
         thrd_perce = th.pi / 18

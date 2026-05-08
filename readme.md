@@ -1,103 +1,142 @@
 # Introduction
-VisFly is a versatile quadrotor simulator specialized for **visual-based** flight using differentiable simulation. 
-As we all know, because of the high requirement of hardware for rendering the vision, the shortage of data is one significant limitations that hinder the development of intelligent drone. 
-And this simulator is proposed to handle this issue. 
 
-Based on habitat-sim, it has almost the highest FPS (1e4Hz, 64*64, RGB, Nvidia RTX 4090) as well as the abundant real-world scenes/objects. 
-The detailed test result could be found in https://arxiv.org/abs/2407.14783.
-Additionally, it is wrapped following the gym standards, integrated with really flexable interfaces. 
-We hope you can find anything you want to customize your own environment with minor effort as less as possible.
+VisFly is a versatile quadrotor simulator for vision-based flight with support for differentiable dynamics.
+Vision-based drone learning is often limited by the cost of rendering large-scale visual data; VisFly reduces that bottleneck by combining high-throughput simulation with configurable visual environments.
 
-This simulator contains differentiable dynamics modelling, 
-which is considered as a promising research direction in the future. 
-~~We have reserved the interface and will release it in our following research.~~ 
-Now we have release one **Hovering** task instance in `/example` trained via Back-propagation-through-time (**BPTT**) using differentiable simulation (analytical gradient). 
-More tasks (**Tracking**, **Landing**, **Racing**)  involves **BPTT** could be found in this repository, which is one of our following research [Amended BPTT](https://github.com/Fanxing-LI/ABPT).
+Built on Habitat-Sim, VisFly supports fast RGB/depth rendering in rich indoor scenes and object layouts. On an NVIDIA RTX 4090 it can reach around `1e4 Hz` for `64×64` RGB observations in our benchmark setting. Detailed results are available in our paper: https://arxiv.org/abs/2407.14783.
 
-We will keep updating this project for more usages.
+The simulator exposes Gym-style interfaces and provides flexible configuration hooks for environments, dynamics, observations, rewards, and training pipelines. It also provides differentiable dynamics models that enable gradient-based policy optimization and planning.
 
-# Noting!
-We will keep updating VisFly for more usages, and the interfaces may be changed. 
-It is hard to comprehensively well maintain all the previous section of the code. 
-Sometimes you will encounter some errors when running the example.
-If you are in a hurry to use VisFly, you could try to reset the git to previous version. 
-Or you can directly tell me via email or Issues on github, and I will fix these issues in next code push.
+# Notice
+
+VisFly is under active development; public interfaces and example layouts may change over time. Please report issues via GitHub Issues (preferred) or by email so we can address them in future updates.
+
 # Installation
+
 ## Clone the repository
-Clone the repository to local.
+
+Create a project folder and clone this repository:
+
 ```bash
-git clone --recurse-submodule https://github.com/SJTU-ViSYS-team/VisFly
+mkdir project_root && cd project_root
+git clone --recurse-submodules https://github.com/SJTU-ViSYS-team/VisFly
 ```
-## Create an conda environment.
-Open the terminal at the root of the project and run the following command:
+
+## Create a Conda environment
+
+Change into the `VisFly` directory and create the environment:
+
 ```bash
+cd VisFly
 conda env create -f environment.yml
 ```
-## Install The Computational Geometry Algorithms Library (CAGL) dependencies.
-Run the following command:
+
+## Download the demo datasets
+
+The demo datasets are built from ReplicaCAD and are hosted on Hugging Face. Large files in the dataset are stored with Git LFS.
+
+You will need a Hugging Face account and an access token. To download the demo dataset:
+
+```bash
+git lfs install
+cd datasets
+git clone https://YourUsername:YourAccessToken@huggingface.co/datasets/LiFanxing/visfly-beta.git
+cd visfly-beta
+git lfs pull
+```
+
+After cloning, the dataset should be available at `VisFly/datasets/visfly-beta`.
+
+## Install Rendering Engine
+
+### CGAL dependencies
+
+Install the Computational Geometry Algorithms Library (CGAL) system dependency:
+
 ```bash
 sudo apt-get install libcgal-dev
 ```
-If you encounter any issues, please refer to the official installation steps on the website of [CAGL](https://www.cgal.org/download/linux.html). 
-## Install modified habitat-sim.
-Clone the modified habitat-sim source code:
-```
+
+If you run into issues, see the CGAL installation guide: https://www.cgal.org/download/linux.html.
+
+### Install the modified habitat-sim
+
+Clone the modified `habitat-sim` repository into a separate folder and follow the project's build instructions:
+
+```bash
+cd ~/Downloads
 git clone https://github.com/Fanxing-LI/habitat-sim
 cd habitat-sim
+# Follow the "Build from Source" section in BUILD_FROM_SOURCE.md
 ```
-Then please follow the steps in Section. **Build from Source** in [habitat-sim installation manual](https://github.com/Fanxing-LI/habitat-sim/blob/main/BUILD_FROM_SOURCE.md).
+
+Follow the steps in the repository's BUILD_FROM_SOURCE.md to build `habitat-sim` from source.
+
+
+# Projects and Papers Using VisFly
+
+- [VisFly-Lab: Unified Differentiable Framework for First-Order Reinforcement Learning of Quadrotor Control](https://github.com/Fanxing-LI/APG)
+- [StableTracker: Learning to Stably Track Target via Differentiable Simulation](https://github.com/Fanxing-LI/obj_track)
+- [Simple but Stable, Fast and Safe: Achieve End-to-end Control by High-Fidelity Differentiable Simulation](https://github.com/Fanxing-LI/avoidance)
+- [Curriculum Reinforcement Learning for Quadrotor Racing with Random Obstacles](https://github.com/SJTU-ViSYS-team/CRL-Drone-Racing)
 
 # Quick Start
-## Download the Datasets for Demo
-Down the dataset from [hugging face](https://huggingface.co/datasets/LiFanxing/VisFly). 
-This demonstration dataset is created based on [Replica](https://github.com/facebookresearch/Replica-Dataset).
-Here you need to register a hugging face acount and export your [access token](https://huggingface.co/blog/password-git-deprecation). 
+
+## Run an example
+
+The example runner is `VisFly/exps/examples/run.py`.
+
+Activate the environment:
+
 ```bash
-cd datasets
-git clone https://YourUsername:YourAccessToken@huggingface.co/datasets/LiFanxing/visfly-beta.git
-mv VisFly-datasets/visfly-beta visfly-beta # move visfly-beta out of VisFly-datasets folder, it should be root/VisFly/datasets/visfly-beta
+conda activate visfly
 ```
 
-## Run an Example
-This is a simple example to show how to train an agent to fly in cluttered environment.
-Create another root folder named "My_Project_Using_VisFly", move VisFly into `My_Project_Using_VisFly/`, and move the examples out of VisFly repository.
+From the project root, train a PPO policy for `cluttered_flight`:
+
 ```bash
-mkdir My_Project_Using_VisFly
-mv VisFly My_Project_Using_VisFly/
-mv My_Project_Using_VisFly/VisFly/examples My_Project_Using_VisFly/
-cd My_Project_Using_VisFly
+python VisFly/exps/examples/run.py -t 1 -e cluttered_flight
 ```
-Then you can run the following command to train the agent.
+
+Evaluate a trained checkpoint:
+
 ```bash
-# Assume you are in the root of the project
-python examples/cluttered_flight/rl.py -t 1
+python VisFly/exps/examples/run.py -t 0 -e cluttered_flight -w PPO_std_1
 ```
-After training, the address of the model will be printed. 
-And you can use the following command to test the model.
+
+Other examples use the same entry point:
+
 ```bash
-python examples/cluttered_flight/rl.py -t 0 -w ppo_1
+python VisFly/exps/examples/run.py -t 1 -e crossing
+python VisFly/exps/examples/run.py -t 1 -e landing
 ```
-Then you can find the result in the `examples/cluttered_flight/saved/test/` folder as the types of both figures and video.
-The figures could be customized by overriding `draw()` in the `examples/cluttered_flight/test.py`. 
-The perspective and position of rendering camera in video could be set via `render_settings (line 129)` in `examples/cluttered_flight/rl.py`. 
+
+Training outputs are saved under `VisFly/exps/examples/saved/<env_name>/`. Environment settings live in `VisFly/exps/examples/env_cfgs/<env_name>.yaml` and algorithm settings in `VisFly/exps/examples/alg_cfgs/<env_name>/PPO.yaml`. Rendering options for evaluation can be adjusted in the `eval_env.scene_kwargs.render_settings` section of the environment config.
 
 # Citation
-If this simulator or any part of this simulator could be helpful, I appreciate it very much when  you maybe cite this one:
+
+If VisFly is useful for your research, please consider citing the paper:
+
 ```
 @misc{li2024visflyefficientversatilesimulator,
-      title={VisFly: An Efficient and Versatile Simulator for Training Vision-based Flight}, 
-      author={Fanxing Li and Fangyu Sun and Tianbao Zhang and Danping Zou},
-      year={2024},
-      eprint={2407.14783},
-      archivePrefix={arXiv},
-      primaryClass={cs.RO},
-      url={https://arxiv.org/abs/2407.14783}, 
+    title={VisFly: An Efficient and Versatile Simulator for Training Vision-based Flight},
+    author={Fanxing Li and Fangyu Sun and Tianbao Zhang and Danping Zou},
+    year={2024},
+    eprint={2407.14783},
+    archivePrefix={arXiv},
+    primaryClass={cs.RO},
+    url={https://arxiv.org/abs/2407.14783},
 }
 ```
 
-# Simple Manual
+# Notes and API
+
+Note: not all interfaces may be fully complete — VisFly is maintained with limited resources. For details and usage examples, refer to the projects and papers that build on VisFly (see "Projects and Papers Using VisFly").
+
 ## Complete Environment Definition
+
 This is a complete definition of the environment of NavigationEnv.
+
 ```python
 from envs.NavigationEnv import NavigationEnv
 import habitat_sim
@@ -194,11 +233,14 @@ env = NavigationEnv(
 
 )
 ```
+
 ## Create Scenes
-Please refer to the official documentation of habitat-sim: https://aihabitat.org/docs/habitat-sim/attributesJSON.html. 
+
+Please refer to the official documentation of habitat-sim: https://aihabitat.org/docs/habitat-sim/attributesJSON.html.
 All the scenes used in the demo are created via objects in ReplicaCAD datasets.
 
 ## Customize Your Own Environment
+
 We make `NavigationEnv` as an example to show how to customize your own environment.
 
 ```python
@@ -288,21 +330,25 @@ class NavigationEnv(DroneGymEnvsBase):
     def reset_agent_by_id(self, indices=None, state=None, reset_obs=None):
         super().reset_agent_by_id(agent_indices=None, state=None, reset_obs=None)
         # if your agent have any new private observation that should be reset. Please add here. RacingEnv.py provides an example.
-    
+  
     # reset scenes by indices
     def reset_env_by_id(self, scene_indices=None):
         super().reset_env_by_id(scene_indices=scene_indices)
-        
+  
     # reset all the agents and scenes, noting that here if you have a scene dataset, VisFly will automatically load to other data in this dataset.
     def reset(self, state=None, obs=None):
         super().reset(state=state, obs=obs)
 
 ```
+
 Except from pose(position, linear_velocity, orientation, angular_velocity), the closest obstacle is also recorded as properties, including `self.collision_point`, `self.collision_vector`, `self.collision_dis`.
 It probably will be helpful to train the capacity of avoiding obstacles.
+
 ## Customize Your Own Policy
-Once the environment is defined, we could employ a reinforcement learning algorithm to train the agent. Here we directly use the PPO algorithm in the stable-baselines3 (SB3) library. 
+
+Once the environment is defined, we could employ a reinforcement learning algorithm to train the agent. Here we directly use the PPO algorithm in the stable-baselines3 (SB3) library.
 Different from SB3, considering requirement of any innovative attempts, we provide a more flexible interface to customize the policy network.
+
 ```python
 from stable_baselines3.ppo import PPO
 import torch
@@ -317,13 +363,13 @@ model = PPO(
         # assert in ["StateExtractor", "StateTargetExtractor", "StateTargetImageExtractor", "StateImageExtractor", "ImageExtractor", "TargetExtractor"]
         features_extractor_kwargs={
             "net_arch": {
-                # Noting that the structure of image extractor is different from the state extractor.
+                # Note that the image extractor structure is different from the state extractor structure.
                 # if use backbone
                 "depth": {  # this name is same with the sensor uuid defined in the environment
                     "backbone": "resnet18",  # assert in ["resnet18", "resnet34", "resnet50", "resnet101", "efficientnet_l", "efficientnet_m", "efficientnet_s", "mobilenet_l", "mobilenet_m", "mobilenet_s"]
                     "layer": [128], # the MLP layer after the backbone
                 },
-                
+        
                 # if not use backbone
                 "depth":{
                     "channels": [6,12,18],  # the channels of each CNN layer
@@ -335,7 +381,7 @@ model = PPO(
                     "bn": False,  # Union[List[Bool], Bool]. The length of list should be equal to the length of layer if bool. 
                     "ln": False,  # All the bn and ln input format are consistent with this one.
                 },
-                
+        
                 "state": {
                     "layer": [128, 64],
                     "bn": False,
@@ -391,9 +437,11 @@ model = PPO(
 ```
 
 ### Customize New Feature Extractor
-Assuming that we put forward or just want to try an innovation framework, where five previous actions should be taken into observation. 
-However, this simulator has not built-in such a feature extractor that takes it as input. 
+
+Assuming that we put forward or just want to try an innovation framework, where five previous actions should be taken into observation.
+However, this simulator has not built-in such a feature extractor that takes it as input.
 So we need to define a new feature extractor in `utils/policies/extractor.py`. Open this file and add the following script at the end:
+
 ```python
 from utils.policies.extractors import StateTargetImageExtractor, set_mlp_feature_extractor, set_cnn_feature_extractor
 import torch as th
@@ -402,13 +450,13 @@ class ActionStateTargetImageExtractor(StateTargetImageExtractor):
     def __init__(self, observation_space, net_arch, activation_fn):
         assert "action" in observation_space.spaces, "The action space should be included in the observation space."
         super(ActionStateTargetImageExtractor, self).__init__(observation_space, net_arch, activation_fn)
-        
+  
     def _build(self, observation_space, net_arch, activation_fn):
         super()._build(observation_space, net_arch, activation_fn)
         _action_features_dim = set_mlp_feature_extractor(   # This function will create a 
             self,
             "action",   # extractor name
-            observation_space["action"],    
+            observation_space["action"],  
             net_arch["action"], 
             activation_fn
         )
@@ -419,8 +467,10 @@ class ActionStateTargetImageExtractor(StateTargetImageExtractor):
         super_features = super().extract(observation)
         return th.cat([super_features, action_features], dim=1)
 ```
+
 At this time, we can use this new feature extractor in the policy network.
 **DO NOT** forget to create new environment and complement the observation space.
+
 ```python
 from envs.NavigationEnv import NavigationEnv
 
@@ -430,64 +480,73 @@ class TensorStack:
     def __init__(self, length):
         self.length = length
         self.xx = []
-    
+  
     def push(self, data):
         pass
-    
+  
     def pop(self):
         pass
-    
+  
     @property
     def output(self):
         return th.cat(self.xx)
 
-    
+  
 class Observe_Action_NavigationEnv(NavigationEnv):
     def __init__(self, *args, **kwargs):
         super(Observe_Action_NavigationEnv, self).__init__(*args, **kwargs)
         self.observation_space["action"] = spaces.Box(low=-1, high=1, shape=(5, 4), dtype=np.float32)  # shape:horizon length 5, action length 4
-        
+  
         # save the receding horizon of actions
         self._past_actions = TensorStack(5)
-        
-    def get_observation(self, indices=None):
+  
+    def get_observation(self, indices=None, predicted_obs=None):
         return {
             "state": self.state.cpu().clone().numpy(),
             "depth": self.sensor_obs["depth"],
             "target": self.target.cpu().clone().numpy(),
             "action": self._past_actions.output,
         }
-    
+  
     def step(self, _action, is_test=False):
         super().step(_action, is_test)
         self._past_actions.push(_action)
 ```
+
 ## Arguments
-In the main script, three arguments are frequently used:
+
+In `exps/examples/run.py`, the most commonly used arguments are:
+
 ```
 -t: 1 for training and 0 for testing.
--w: the address of the loading model. 
-    if t is 1, the model will be loaded as the initail model parameters.
-    if t is 0, the model will be loaded as the testing model.
--c: the commit information while saving the model, which will be added in the saving address. 
+-e: the example environment name, such as cluttered_flight, crossing, or landing.
+-w: the checkpoint name to load.
+    If -t is 1, the checkpoint is used as the initial policy.
+    If -t is 0, the checkpoint is used for evaluation.
+-c: an optional comment added to the saved checkpoint and log directory name.
 ```
-If you would like to create another main script, please do not forget to read the origin main script to grasp how these parameters work.
 
-Let's make some regular schedules as examples to introduce more clearly.
-In first training, the reward curve is not as expected. So we modify the net structure and want to retrain the model. 
-For the convenience of comparison, you can directly use -c arguments to change the saving address.
+If you create a custom runner, use `exps/examples/run.py` as the reference implementation for loading configs, resolving aliases, and saving checkpoints.
+
+The following examples show typical training schedules.
+If the first training curve is not satisfactory, you may adjust the network structure in `exps/examples/alg_cfgs/cluttered_flight/PPO.yaml` and retrain with a different comment:
+
 ```bash
-python examples/cluttered_flight/rl.py -t 1 -c "second_structure"
+python VisFly/exps/examples/run.py -t 1 -e cluttered_flight -c "second_structure"
 ```
-The training process is monitored using tensorboard, and the trained model will be saved as `PPO_second_structure_1.zip`(algorithmName_commit_index). 
-Noting that if `PPO_second_structure_1.zip` exists, the last number in address will improve unless this address will not conflict with any files.
-Then, luckily, the reward curve shows an acceptable result. So we want to test the model.
+
+Training logs can be monitored with TensorBoard, and checkpoints are saved under `VisFly/exps/examples/cluttered_flight/saved/`.
+If `PPO_second_structure_1.zip` already exists, VisFly increments the final index to avoid overwriting existing files.
+
+After training, evaluate the checkpoint with:
+
 ```bash
-python examples/cluttered_flight/rl.py -t 0 -w "PPO_second_structure_1"
+python VisFly/exps/examples/run.py -t 0 -e cluttered_flight -w "PPO_second_structure_1"
 ```
-Sometimes the fact implies that it is hard to well train the policy in one step.
-That means we need to employ meta learning or curriculum learning which divides the training process into several stages.
-First we teach the drone how to stably hover, so we define `get_reward()` as:
+
+Some policies are difficult to train in a single stage.
+In that case, curriculum learning can split training into several phases.
+For example, first train the drone to hover steadily by defining `get_reward()` as:
 
 ```python
 def get_reward(self) -> th.Tensor:
@@ -503,18 +562,21 @@ def get_reward(self) -> th.Tensor:
     )
     return reward
 ```
-Here, if you do not need the vision input, you can set `visual=False` while defining the environment, it accelerates the process significantly. 
+
+If vision input is not needed during this stage, set `visual: False` in `exps/examples/env_cfgs/cluttered_flight.yaml` to speed up training.
 Run in bash:
+
 ```bash
-python examples/cluttered_flight/rl.py -t 1 -c "first_train" 
+python VisFly/exps/examples/run.py -t 1 -e cluttered_flight -c "first_train"
 ```
 
-Now the agent has grasped basic flying skills. Then we train it to fly while avoiding the obstacles.
-Change the `get_reward()` and use another cluttered scene datasets path:
+After the agent learns basic flight, train it to avoid obstacles.
+Update `get_reward()` and set a cluttered scene path in `exps/examples/env_cfgs/cluttered_flight.yaml`:
 
 ```python
-# in main.py
-scene_path = "datasets/visfly-beta/configs/garage_simple_l_medium"
+# in exps/env_cfgs/cluttered_flight.yaml
+scene_kwargs:
+  path: VisFly/datasets/visfly-beta/configs/scenes/garage_simple_l_medium
 
 
 # in NavigationEnv.py
@@ -533,10 +595,12 @@ def get_reward(self) -> th.Tensor:
              self._success * (self.max_episode_steps - self._step_count) * base_r * (0.2 + 0.8 / (1 + 1 * self.const_velocity.norm(dim=1)))
     return reward
 ```
-Run in bash:
-```bash
-python examples/cluttered_flight/rl.py -t 1 -c "second_train" -w "first_train_1"
-```
-The well-trained model will be saved as `second_train_1.zip`. 
-At present, you could transfer this model and verify in another simulator or in reality.
 
+Run in bash:
+
+```bash
+python VisFly/exps/examples/run.py -t 1 -e cluttered_flight -c "second_train" -w "first_train_1"
+```
+
+The trained model will be saved as `second_train_1.zip`.
+You can then transfer the model for validation in another simulator or on real hardware.

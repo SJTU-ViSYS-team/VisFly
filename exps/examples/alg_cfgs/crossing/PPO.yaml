@@ -1,0 +1,43 @@
+algorithm:
+  policy: MultiInputPolicy
+  policy_kwargs:
+    features_extractor_class: SwarmStateTargetImageExtractor
+    features_extractor_kwargs:
+      net_arch:
+        depth:
+          layer: [128]
+        state:
+          layer: [128, 64]
+        target:
+          layer: [128, 64]
+        swarm:
+          layer: [128, 64]
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+    activation_fn: ReLU
+    optimizer_class: Adam
+    optimizer_kwargs:
+      weight_decay: 1.0e-5
+  verbose: 1
+  gamma: 0.99
+  n_steps: 256
+  ent_coef: 0.0
+  learning_rate: 1.0e-4
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  batch_size: 25600
+  gae_lambda: 0.95
+  n_epochs: 5
+  clip_range: 0.2
+  device: cuda
+
+learn:
+  total_timesteps: 10000000
+
+test:
+  is_fig: False
+  is_fig_save: True
+  is_video: False
+  is_video_save: True
+  render_kwargs: {}

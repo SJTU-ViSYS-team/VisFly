@@ -1,5 +1,5 @@
 import numpy as np
-from envs.multiDroneGymEnv import MultiDroneGymEnvBase
+from .multiDroneGymEnv import MultiDroneGymEnvBase
 from typing import Union, Tuple, List, Optional, Dict
 import torch as th
 from habitat_sim import SensorType
@@ -76,7 +76,8 @@ class MultiNavigationEnv(MultiDroneGymEnvBase):
 
     def get_observation(
             self,
-            indices=None
+            indices=None,
+            predicted_obs=None,
     ) -> Dict:
         swarm = th.zeros((self.num_agent, self.num_agent_per_scene-1, self.observation_space["state"].shape[0]))
         for scene_index in range(self.num_scene):
