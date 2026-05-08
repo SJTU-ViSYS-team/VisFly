@@ -9,7 +9,7 @@ import torch
 from habitat_sim.sensor import SensorType
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-PROJECT_PARENT = os.path.abspath(os.path.join(PROJECT_ROOT, ".."))
+PROJECT_PARENT = os.path.abspath(os.path.join(PROJECT_ROOT, "../.."))
 sys.path.append(PROJECT_ROOT)
 sys.path.append(PROJECT_PARENT)
 
