@@ -98,10 +98,10 @@ From the project root, train a PPO policy for `cluttered_flight`:
 python VisFly/exps/examples/run.py -t 1 -e cluttered_flight
 ```
 
-Evaluate a trained checkpoint:
+Evaluate a trained checkpoint: (if you did not specialize a customized comment)
 
 ```bash
-python VisFly/exps/examples/run.py -t 0 -e cluttered_flight -w PPO_std_1
+python VisFly/exps/examples/run.py -t 0 -e cluttered_flight -w PPO_std_1.zip
 ```
 
 Other examples use the same entry point:

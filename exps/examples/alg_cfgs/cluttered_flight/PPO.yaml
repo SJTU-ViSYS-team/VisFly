@@ -1,6 +1,7 @@
 algorithm:
   policy: CustomMultiInputPolicy
   policy_kwargs:
+    ortho_init: False
     features_extractor_class: StateTargetImageExtractor
     features_extractor_kwargs:
       net_arch:
@@ -20,7 +21,7 @@ algorithm:
   gamma: 0.99
   n_steps: 256
   ent_coef: 0.0
-  learning_rate: 1.0e-4
+  learning_rate: 5.0e-5
   vf_coef: 0.5
   max_grad_norm: 0.5
   batch_size: 25600
